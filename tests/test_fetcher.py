@@ -1,7 +1,8 @@
 """Tests for fetcher module."""
 
 import pytest
-from websearch.core.errors import (
+from websearch.core.fetcher import Fetcher, calculate_backoff, is_spa
+from websearch.core.fetcher.errors import (
     ConnectTimeoutError,
     ConnectionError,
     DNSError,
@@ -16,7 +17,6 @@ from websearch.core.errors import (
     ServerError,
     TooManyRedirectsError,
 )
-from websearch.core.fetcher import Fetcher, calculate_backoff, is_spa
 
 
 class TestCalculateBackoff:

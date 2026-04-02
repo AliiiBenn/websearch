@@ -6,7 +6,7 @@ import asyncio
 
 import httpx
 
-from websearch.core.errors import (
+from websearch.core.fetcher.errors import (
     ConnectTimeoutError,
     ConnectionError,
     DNSError,
