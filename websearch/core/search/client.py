@@ -119,7 +119,7 @@ class BraveClient:
 
         # Map search type to Brave API parameter
         if search_type == "web":
-            endpoint = "search"
+            endpoint = "web/search"
         elif search_type == "news":
             endpoint = "news/search"
         elif search_type == "images":
@@ -127,7 +127,7 @@ class BraveClient:
         elif search_type == "videos":
             endpoint = "videos/search"
         else:
-            endpoint = "search"
+            endpoint = "web/search"
 
         params = {
             "q": query,
@@ -143,9 +143,11 @@ class BraveClient:
 
         if status_code == 200:
             data = response.json()
+            # Results are nested under "web" key for web search
+            web_results = data.get("web", {}).get("results", [])
             results = [
                 SearchResult.from_dict(item)
-                for item in data.get("results", [])
+                for item in web_results
             ]
             return SearchResults(
                 query=query,
