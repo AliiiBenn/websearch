@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: websearch
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.14
+Description-Content-Type: text/markdown
+Requires-Dist: typer[all]>=0.12
+Requires-Dist: httpx>=0.25
+Requires-Dist: selectolax>=0.3
+Requires-Dist: markdownify>=0.12
+Requires-Dist: rich>=13.0
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Provides-Extra: spa
+Requires-Dist: playwright>=1.40; extra == "spa"
+
+### Websearch

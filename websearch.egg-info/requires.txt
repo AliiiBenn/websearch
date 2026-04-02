@@ -1,0 +1,13 @@
+typer[all]>=0.12
+httpx>=0.25
+selectolax>=0.3
+markdownify>=0.12
+rich>=13.0
+
+[dev]
+pytest
+ruff
+mypy
+
+[spa]
+playwright>=1.40
