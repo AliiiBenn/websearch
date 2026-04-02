@@ -5,10 +5,11 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "typer",
+    "typer[all]>=0.12",
     "httpx>=0.25",
     "selectolax>=0.3",
     "markdownify>=0.12",
+    "rich>=13.0",
 ]
 
 [project.optional-dependencies]

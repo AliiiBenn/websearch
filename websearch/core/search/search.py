@@ -38,6 +38,7 @@ class Search:
         cache_ttl: int = 7200,
         cache_dir: Path | None = None,
         user_agent: str | None = None,
+        verify_ssl: bool = True,
     ):
         """Initialize search client.
 
@@ -59,6 +60,7 @@ class Search:
         self.fetcher = Fetcher(
             timeout=timeout,
             user_agent=user_agent,
+            verify_ssl=verify_ssl,
         )
 
     async def search(
