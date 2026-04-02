@@ -18,12 +18,7 @@ def get_cache_dir() -> Path:
     Returns:
         Path to cache directory
     """
-    if hasattr(Path, "home"):
-        cache_base = Path.home() / ".cache" / "websearch"
-    else:
-        cache_base = Path("./.cache/websearch")
-
-    return cache_base
+    return Path.home() / ".cache" / "websearch"
 
 
 class CacheStorage:

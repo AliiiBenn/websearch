@@ -14,7 +14,7 @@ from websearch.core.cache.ttl import (
     is_expired,
     utc_now,
 )
-from websearch.core.types.maybe import Just, Maybe
+from websearch.core.types.maybe import Just, Maybe, Nothing
 
 
 class Cache:
@@ -48,19 +48,19 @@ class Cache:
             Nothing on cache miss or expired
         """
         if not self.enabled:
-            return Nothing
+            return Nothing()
 
         content, metadata = self.storage.get_url(url)
 
         if content is None or metadata is None:
-            return Nothing
+            return Nothing()
 
         # Check expiration
         cached_at = metadata.get("cached_at")
         ttl = metadata.get("ttl", DEFAULT_URL_TTL)
 
         if cached_at is None:
-            return Nothing
+            return Nothing()
 
         from datetime import datetime, timezone
 
@@ -68,7 +68,7 @@ class Cache:
             cached_at = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
 
         if is_expired(cached_at, ttl):
-            return Nothing
+            return Nothing()
 
         return Just((content, metadata))
 
@@ -113,19 +113,19 @@ class Cache:
             Just(results) on cache hit, Nothing otherwise
         """
         if not self.enabled:
-            return Nothing
+            return Nothing()
 
         data = self.storage.get_search(query, count, result_type)
 
         if data is None:
-            return Nothing
+            return Nothing()
 
         metadata = data.get("metadata", {})
         cached_at = metadata.get("cached_at")
         ttl = metadata.get("ttl", DEFAULT_SEARCH_TTL)
 
         if cached_at is None:
-            return Nothing
+            return Nothing()
 
         from datetime import datetime, timezone
 
@@ -133,7 +133,7 @@ class Cache:
             cached_at = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
 
         if is_expired(cached_at, ttl):
-            return Nothing
+            return Nothing()
 
         return Just(data.get("results", {}))
 
