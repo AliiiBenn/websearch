@@ -84,7 +84,15 @@ class Search:
         if use_cache:
             cached = self.cache.get_search(query, count, search_type)
             if cached.is_just():
-                return cached
+                # Reconstruct SearchResults from cached dict
+                data = cached.just_value()
+                results = SearchResults(
+                    query=data["query"],
+                    count=len(data["results"]),
+                    results=[SearchResult(**r) for r in data["results"]],
+                    raw=data,
+                )
+                return Just(results)
 
         try:
             async with BraveClient(api_key=self.api_key, timeout=self.timeout) as client:
