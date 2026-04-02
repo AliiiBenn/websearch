@@ -28,8 +28,8 @@ def normalize_url(url: str) -> str:
     ):
         netloc = netloc.rsplit(":", 1)[0]
 
-    # Decode path
-    path = unquote(parsed.path)
+    # Decode path and lowercase it for case-insensitive matching
+    path = unquote(parsed.path).lower()
     if not path:
         path = "/"
 
