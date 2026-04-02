@@ -1,0 +1,187 @@
+"""Main search interface combining fetcher, converter, cache, and Brave API."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any
+
+from websearch.core.cache import Cache
+from websearch.core.converter import Converter
+from websearch.core.fetcher import Fetcher
+from websearch.core.fetcher.errors import HttpError
+from websearch.core.search.client import BraveClient, BraveApiError
+from websearch.core.search.types import SearchResults, SearchResult
+from websearch.core.types.maybe import Just, Maybe, Nothing
+
+
+class SearchError(Exception):
+    """Base search error."""
+    pass
+
+
+class Search:
+    """Web search and fetch client.
+
+    Orchestrates:
+    - Brave Search API for web search
+    - Fetcher for HTTP requests
+    - Converter for HTML to Markdown
+    - Cache for URL and search result caching
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        timeout: int = 30,
+        cache_enabled: bool = True,
+        cache_ttl: int = 7200,
+        cache_dir: Path | None = None,
+        user_agent: str | None = None,
+    ):
+        """Initialize search client.
+
+        Args:
+            api_key: Brave API key (or BRAVE_API_KEY env var)
+            timeout: Request timeout in seconds
+            cache_enabled: Enable caching
+            cache_ttl: Cache TTL in seconds
+            cache_dir: Custom cache directory
+            user_agent: Custom user agent
+        """
+        self.api_key = api_key or os.getenv("BRAVE_API_KEY")
+        self.timeout = timeout
+        self.cache = Cache(
+            cache_dir=cache_dir,
+            enabled=cache_enabled,
+        )
+        self.converter = Converter()
+        self.fetcher = Fetcher(
+            timeout=timeout,
+            user_agent=user_agent,
+        )
+
+    async def search(
+        self,
+        query: str,
+        count: int = 10,
+        search_type: str = "web",
+        use_cache: bool = True,
+    ) -> Maybe[SearchResults]:
+        """Search the web using Brave Search API.
+
+        Args:
+            query: Search query
+            count: Number of results (1-50)
+            search_type: Type of search (web, news, images, videos)
+            use_cache: Whether to use cached results
+
+        Returns:
+            Just(SearchResults) on success, Nothing on failure
+        """
+        if use_cache:
+            cached = self.cache.get_search(query, count, search_type)
+            if cached.is_just():
+                return cached
+
+        try:
+            async with BraveClient(api_key=self.api_key, timeout=self.timeout) as client:
+                results = await client.web_search(query, count, search_type)
+        except BraveApiError:
+            return Nothing()
+
+        if use_cache:
+            self.cache.set_search(query, count, search_type, {
+                "query": results.query,
+                "results": [
+                    {"title": r.title, "url": r.url, "description": r.description, "age": r.age}
+                    for r in results.results
+                ],
+            })
+
+        return Just(results)
+
+    async def fetch(
+        self,
+        url: str,
+        refresh: bool = False,
+        use_cache: bool = True,
+    ) -> Maybe[str]:
+        """Fetch URL and convert to Markdown.
+
+        Args:
+            url: URL to fetch
+            refresh: Skip cache and force fresh fetch
+            use_cache: Whether to use cached content
+
+        Returns:
+            Just(markdown_string) on success, Nothing on failure
+        """
+        if use_cache and not refresh:
+            cached = self.cache.get_url(url)
+            if cached.is_just():
+                content, _ = cached.just_value()
+                md = self.converter.to_markdown(content)
+                return md
+
+        result = await self.fetcher.fetch(url)
+
+        if result.is_err():
+            return Nothing()
+
+        content = result.ok()
+        if content is None:
+            return Nothing()
+
+        if use_cache and not refresh:
+            self.cache.set_url(url, content)
+
+        md = self.converter.to_markdown(content)
+        return md
+
+    async def fetch_raw(
+        self,
+        url: str,
+        refresh: bool = False,
+    ) -> Maybe[tuple[bytes, dict[str, Any]]]:
+        """Fetch URL content without conversion.
+
+        Args:
+            url: URL to fetch
+            refresh: Skip cache and force fresh fetch
+
+        Returns:
+            Just((content_bytes, metadata_dict)) on success, Nothing on failure
+        """
+        if not refresh:
+            cached = self.cache.get_url(url)
+            if cached.is_just():
+                return cached
+
+        result = await self.fetcher.fetch(url)
+
+        if result.is_err():
+            return Nothing()
+
+        content = result.ok()
+        if content is None:
+            return Nothing()
+
+        metadata = {
+            "url": url,
+            "content_length": len(content),
+        }
+
+        self.cache.set_url(url, content, metadata)
+
+        return Just((content, metadata))
+
+    async def close(self) -> None:
+        """Close client and cleanup resources."""
+        await self.fetcher.close()
+
+    async def __aenter__(self) -> Search:
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        await self.close()
