@@ -2,11 +2,7 @@
 
 ## Overview
 
-The websearch CLI caches fetched URLs and search results to improve performance and reduce API calls. Caching is particularly useful when:
-
-- Re-fetching the same URLs multiple times
-- Running scripts that repeatedly query the same data
-- Working offline with previously cached content
+The cache stores fetched URLs and search results to disk for reuse. It reduces redundant network requests and enables offline access to previously fetched content.
 
 ## Cache Storage
 
@@ -67,9 +63,21 @@ Each cached item includes metadata:
 | URL content | 2 hours | 24 hours |
 | Search results | 1 hour | 6 hours |
 
+### TTL Jitter
+
+To prevent mass expiration at TTL boundary, actual TTL varies by ±10%:
+
+```python
+import random
+
+def calculate_ttl(base_ttl: float, jitter: float = 0.1) -> float:
+    jitter_range = base_ttl * jitter
+    return base_ttl + random.uniform(-jitter_range, jitter_range)
+```
+
 ### Cache-Control Headers
 
-The CLI respects HTTP `Cache-Control` headers when available:
+The CLI respects HTTP `Cache-Control` headers:
 
 - `max-age=N` - Use specified seconds as TTL
 - `no-cache` - Skip caching
@@ -84,27 +92,43 @@ When fetching a cached URL:
 2. If server returns `304 Not Modified`, serve from cache
 3. If content changed, update cache and serve new content
 
+## Eviction
+
+### LRU (Least Recently Used)
+
+When max cache size is reached, least recently used entries are evicted first.
+
+### Max Size
+
+Default maximum cache size is 500MB. When exceeded:
+1. Sort entries by last access time
+2. Evict oldest entries until under limit
+3. Eviction is immediate, not batched
+
 ## Configuration
 
-### Set cache directory
+### CLI Commands
 
 ```bash
-websearch config cache.dir /path/to/cache
+# View cache stats
+websearch cache stats
+
+# List cached URLs
+websearch cache list
+websearch cache list --type url
+websearch cache list --type search
+
+# Clear cache
+websearch cache clear
+websearch cache clear --type url
+websearch cache clear --type search
+websearch cache clear --older-than 7d
+
+# Invalidate specific URL
+websearch cache invalidate https://example.com
 ```
 
-### Set default TTL
-
-```bash
-websearch config cache.ttl 3600  # 1 hour in seconds
-```
-
-### Set max cache size
-
-```bash
-websearch config cache.max-size 500M
-```
-
-### Configuration file
+### Configuration File
 
 In `~/.websearchrc`:
 
@@ -116,99 +140,34 @@ max_size = 500M
 enabled = true
 ```
 
-## Cache Commands
+### Environment Variables
 
-### View cache stats
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WEBSEARCH_CACHE_DIR` | Cache directory path | Platform-specific |
+| `WEBSEARCH_CACHE_TTL` | Default TTL in seconds | 7200 |
+| `WEBSEARCH_CACHE_MAX_SIZE` | Maximum cache size | 500M |
+| `WEBSEARCH_CACHE_ENABLED` | Enable/disable cache | true |
 
-```bash
-websearch cache stats
-```
-
-Output:
-
-```
-URL cache:
-  Items: 47
-  Size: 12.3 MB
-  oldest: 2024-01-10
-
-Search cache:
-  Items: 123
-  Size: 2.1 MB
-  oldest: 2024-01-14
-
-Total: 14.4 MB
-```
-
-### List cached URLs
+## Usage in Commands
 
 ```bash
-websearch cache list
-websearch cache list --type url
-websearch cache list --type search
-```
-
-### Clear cache
-
-```bash
-# Clear all cache
-websearch cache clear
-
-# Clear URL cache only
-websearch cache clear --type url
-
-# Clear search cache only
-websearch cache clear --type search
-
-# Clear cache older than 7 days
-websearch cache clear --older-than 7d
-```
-
-### Invalidate specific URL
-
-```bash
-websearch cache invalidate https://example.com
-```
-
-### Export/Import cache
-
-```bash
-# Export cache to file
-websearch cache export /path/to/backup.tar.gz
-
-# Import cache from file
-websearch cache import /path/to/backup.tar.gz
-```
-
-## Using Cache in Commands
-
-### Force fresh fetch
-
-```bash
+# Force fresh fetch (bypass cache)
 websearch get https://example.com --no-cache
-```
 
-### Only use cache (offline mode)
-
-```bash
+# Only use cache (offline mode)
 websearch get https://example.com --cache-only
-```
 
-### Refresh expired items
-
-```bash
+# Refresh expired items
 websearch get https://example.com --refresh
-```
 
-### Search without cache
-
-```bash
+# Search without cache
 websearch search "query" --no-cache
 ```
 
-## Programmatic Access
+## Python API
 
-### Python API
+### Basic Usage
 
 ```python
 from websearch.cache import Cache
@@ -221,7 +180,7 @@ content, metadata = cache.get_url("https://example.com")
 # Cache a URL
 cache.set_url("https://example.com", html_content, metadata)
 
-# Check if URL is cached and fresh
+# Check if cached and fresh
 if cache.is_fresh("https://example.com"):
     print("Cache hit!")
 else:
@@ -230,7 +189,7 @@ else:
 
 ### Cache Key Generation
 
-URLs are cached by their normalized URL:
+URLs are normalized before caching:
 
 ```python
 from websearch.cache import normalize_url, get_cache_key
@@ -248,26 +207,19 @@ Search results are cached by hashed query:
 ```python
 from websearch.cache import get_search_key
 
-query = "python async"
-count = 10
-search_type = "web"
-
-cache_key = get_search_key(query, count, search_type)
+cache_key = get_search_key("python async", 10, "web")
 # cache_key: "dc9a8f5_10_web.json"
 ```
 
-## Environment Variables
+## Concurrency
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `WEBSEARCH_CACHE_DIR` | Cache directory path | Platform-specific |
-| `WEBSEARCH_CACHE_TTL` | Default TTL in seconds | 7200 |
-| `WEBSEARCH_CACHE_MAX_SIZE` | Maximum cache size | 500M |
-| `WEBSEARCH_CACHE_ENABLED` | Enable/disable cache | true |
+- Cache writes are atomic (write to temp file, then rename)
+- Multiple processes can read simultaneously
+- Lock files prevent concurrent writes to same item
 
 ## Troubleshooting
 
-### Cache占用太多空间
+### Cache too large
 
 ```bash
 # Check what's using space
@@ -282,28 +234,46 @@ websearch config cache.max-size 100M
 
 ### Cache not being used
 
-1. Verify cache is enabled: `websearch config cache.enabled` should return `true`
+1. Verify cache is enabled: `websearch config cache.enabled` returns `true`
 2. Check if `--no-cache` flag is being passed
 3. Verify TTL hasn't expired
 4. Check cache directory permissions
 
 ### Invalid cache errors
 
-If you see "Invalid cache file" errors:
-
-1. The cache may be corrupted
-2. Try clearing and rebuilding: `websearch cache clear`
+1. Cache may be corrupted
+2. Try clearing: `websearch cache clear`
 
 ## Implementation Details
 
-### Cache Invalidation Strategy
+### Invalidation Strategies
 
-- **LRU (Least Recently Used)** eviction when max size reached
+- **LRU** eviction when max size reached
 - **TTL-based** expiration checked on each access
 - **URL-based** invalidation when forcing refresh
 
-### Concurrency
+### Storage Format
 
-- Cache writes are atomic (write to temp file, then rename)
-- Multiple processes can read simultaneously
-- Lock files prevent concurrent writes to same item
+```
+cache/
+├── {domain}/
+│   └── {path}/
+│       ├── index.html           # Cached content
+│       └── index.html.json      # Metadata
+└── search/
+    └── {hash}_{count}_{type}.json
+```
+
+## Dependencies
+
+```toml
+dependencies = [
+    "httpx>=0.25",
+]
+```
+
+## Limitations
+
+- PDF content is not cached
+- Authentication-protected pages are not cached
+- Cache is local to this machine (not shared)
