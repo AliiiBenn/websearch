@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import random
-from typing import TYPE_CHECKING
 
 import httpx
 
@@ -17,45 +15,21 @@ from websearch.core.errors import (
     HttpStatusError,
     HttpTimeoutError,
     InvalidUrlError,
-    NetworkError,
     NotFoundError,
     RateLimitError,
     ReadTimeoutError,
     ServerError,
     TooManyRedirectsError,
 )
+from websearch.core.fetcher.backoff import calculate_backoff
+from websearch.core.fetcher.detection import is_spa
 from websearch.core.types.result import Err, Ok, Result
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
 
 # Retryable status codes
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 # Default timeout
 DEFAULT_TIMEOUT = 30
-
-
-def calculate_backoff(attempt: int, base: float = 0.5) -> float:
-    """Calculate sleep time with exponential backoff."""
-    return base * (2 ** (attempt - 1))
-
-
-def is_spa(html: bytes) -> bool:
-    """Detect if page is likely a SPA based on content."""
-    if len(html) < 500:
-        return True
-
-    content_lower = html.lower()
-    frameworks = [b"react", b"vue.js", b"angular", b"next", b"nuxt"]
-    if any(fw in content_lower for fw in frameworks):
-        return True
-
-    if b"data-vue" in content_lower or b"ng-app" in content_lower:
-        return True
-
-    return False
 
 
 class Fetcher:
@@ -100,21 +74,6 @@ class Fetcher:
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
 
-    def _is_retryable_exception(self, exc: Exception) -> bool:
-        """Determine if an exception is retryable."""
-        if isinstance(exc, httpx.TimeoutException):
-            # Don't retry connect timeout - indicates unreachable
-            if isinstance(exc, httpx.ConnectTimeout):
-                return False
-            return True
-        if isinstance(exc, httpx.ConnectError):
-            return True
-        if isinstance(exc, httpx.TooManyRedirects):
-            return False
-        if isinstance(exc, httpx.InvalidURL):
-            return False
-        return False
-
     def _error_from_response(self, response: httpx.Response, url: str) -> HttpError:
         """Create appropriate error from HTTP response."""
         status = response.status_code
@@ -148,7 +107,7 @@ class Fetcher:
         if isinstance(exc, httpx.InvalidURL):
             return InvalidUrlError(f"Invalid URL: {url}", url)
 
-        return NetworkError(f"Network error: {exc}", url)
+        return ConnectionError(f"Connection error: {exc}", url)
 
     async def _fetch_one(self, url: str) -> Result[bytes, HttpError]:
         """Fetch a single URL without retry."""
@@ -171,7 +130,10 @@ class Fetcher:
         if result.is_err():
             return result
 
-        html = result.unwrap()
+        html = result.ok()
+
+        if html is None:
+            return Err(ConnectionError("Unexpected null content", url))
 
         if not is_spa(html):
             return result
@@ -185,7 +147,6 @@ class Fetcher:
                 self._playwright_available = False
 
         if not self._playwright_available:
-            # Playwright not available, return raw HTML
             return result
 
         return await self._fetch_with_playwright(url)
@@ -195,7 +156,7 @@ class Fetcher:
         try:
             from playwright.async_api import async_playwright
         except ImportError:
-            return Err(NetworkError("Playwright not installed", url))
+            return Err(ConnectionError("Playwright not installed", url))
 
         try:
             async with async_playwright() as p:
@@ -211,7 +172,19 @@ class Fetcher:
                 finally:
                     await browser.close()
         except Exception as exc:
-            return Err(NetworkError(f"Playwright error: {exc}", url))
+            return Err(ConnectionError(f"Playwright error: {exc}", url))
+
+    def _is_retryable_error(self, error: HttpError) -> bool:
+        """Determine if an error should be retried."""
+        if isinstance(error, RateLimitError):
+            return True
+        if isinstance(error, ServerError):
+            return True
+        if isinstance(error, ReadTimeoutError):
+            return True
+        if isinstance(error, ConnectionError):
+            return True
+        return False
 
     async def fetch(self, url: str) -> Result[bytes, HttpError]:
         """Fetch URL with retry logic.
@@ -233,39 +206,17 @@ class Fetcher:
             error = result.unwrap_err()
             last_error = error
 
-            # Check if we should retry
-            if isinstance(error, RateLimitError):
-                # Rate limited - retry with backoff
-                if attempt < self.max_retries:
-                    await asyncio.sleep(calculate_backoff(attempt))
-                    continue
-
-            if isinstance(error, ServerError):
-                # Server error - retry with backoff
-                if attempt < self.max_retries:
-                    await asyncio.sleep(calculate_backoff(attempt))
-                    continue
-
-            if isinstance(error, ReadTimeoutError):
-                # Read timeout - retry
-                if attempt < self.max_retries:
-                    await asyncio.sleep(calculate_backoff(attempt))
-                    continue
-
-            if isinstance(error, (NotFoundError, ForbiddenError, InvalidUrlError)):
-                # Client errors - don't retry
+            # Don't retry non-retryable errors
+            if not self._is_retryable_error(error):
                 return result
 
-            if isinstance(error, (ConnectTimeoutError, DNSError, TooManyRedirectsError)):
-                # Non-retryable - don't retry
+            # Don't retry if we've exhausted retries
+            if attempt >= self.max_retries:
                 return result
 
-            # For network errors, retry
-            if isinstance(error, NetworkError):
-                if attempt < self.max_retries:
-                    await asyncio.sleep(calculate_backoff(attempt))
-                    continue
+            # Sleep before retry
+            await asyncio.sleep(calculate_backoff(attempt))
 
-            return result
-
-        return Err(last_error) if last_error else Err(NetworkError("Unknown error", url))
+        return Err(last_error) if last_error else Err(
+            ConnectionError("Unknown error", url)
+        )
