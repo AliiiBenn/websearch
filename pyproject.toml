@@ -16,5 +16,11 @@ dependencies = [
 dev = ["pytest"]
 spa = ["playwright>=1.40"]
 
+[project.scripts]
+websearch = "websearch.main:main"
+
+[tool.uv]
+package = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

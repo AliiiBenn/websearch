@@ -1,3 +1,3 @@
-from websearch.main import app
+from websearch.main import main
 
-app()
+main()
