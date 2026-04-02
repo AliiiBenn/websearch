@@ -47,7 +47,8 @@ class TestNormalizeUrl:
     def test_decode_path(self):
         url = "https://example.com/Hello%20World"
         normalized = normalize_url(url)
-        assert "Hello World" in normalized
+        # Path is lowercased for case-insensitive matching
+        assert "hello world" in normalized
 
     def test_trailing_slash_removed(self):
         url = "https://example.com/page/"
