@@ -1,6 +1,12 @@
 """Web search and fetch client."""
 
-from websearch.core.search.client import BraveClient, BraveApiError, ApiKeyError, RateLimitError, QuotaExceededError
+from websearch.core.search.client import (
+    ApiKeyError,
+    BraveApiError,
+    BraveClient,
+    QuotaExceededError,
+    RateLimitError,
+)
 from websearch.core.search.search import Search, SearchError
 from websearch.core.search.types import SearchResult, SearchResults
 

@@ -6,7 +6,6 @@ from typing import Callable, Generic, TypeVar
 
 from websearch.core.types.result import Err, Ok, Result
 
-
 T = TypeVar("T")
 U = TypeVar("U")
 E = TypeVar("E")

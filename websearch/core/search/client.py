@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from websearch.core.search.types import SearchResults, SearchResult
+from websearch.core.search.types import SearchResult, SearchResults
 
 
 class BraveApiError(Exception):

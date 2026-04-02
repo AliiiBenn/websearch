@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 # JavaScript frameworks that indicate a SPA
 SPAMARKERS = [
     b"react",

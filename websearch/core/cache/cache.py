@@ -7,12 +7,11 @@ from typing import Any
 
 from websearch.core.cache.storage import CacheStorage
 from websearch.core.cache.ttl import (
-    DEFAULT_URL_TTL,
     DEFAULT_SEARCH_TTL,
-    get_url_ttl,
+    DEFAULT_URL_TTL,
     get_search_ttl,
+    get_url_ttl,
     is_expired,
-    utc_now,
 )
 from websearch.core.types.maybe import Just, Maybe, Nothing
 
@@ -62,7 +61,7 @@ class Cache:
         if cached_at is None:
             return Nothing()
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         if isinstance(cached_at, str):
             cached_at = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
@@ -127,7 +126,7 @@ class Cache:
         if cached_at is None:
             return Nothing()
 
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         if isinstance(cached_at, str):
             cached_at = datetime.fromisoformat(cached_at.replace("Z", "+00:00"))

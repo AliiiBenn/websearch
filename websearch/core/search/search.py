@@ -9,9 +9,8 @@ from typing import Any
 from websearch.core.cache import Cache
 from websearch.core.converter import Converter
 from websearch.core.fetcher import Fetcher
-from websearch.core.fetcher.errors import HttpError
-from websearch.core.search.client import BraveClient, BraveApiError
-from websearch.core.search.types import SearchResults, SearchResult
+from websearch.core.search.client import BraveApiError, BraveClient
+from websearch.core.search.types import SearchResult, SearchResults
 from websearch.core.types.maybe import Just, Maybe, Nothing
 
 

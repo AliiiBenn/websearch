@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime, timezone, timedelta
-
+from datetime import datetime, timedelta, timezone
 
 # Default TTLs in seconds
 DEFAULT_URL_TTL = 7200  # 2 hours

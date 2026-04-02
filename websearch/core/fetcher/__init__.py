@@ -3,8 +3,8 @@
 from websearch.core.fetcher.backoff import calculate_backoff
 from websearch.core.fetcher.detection import is_spa
 from websearch.core.fetcher.errors import (
-    ConnectTimeoutError,
     ConnectionError,
+    ConnectTimeoutError,
     DNSError,
     ForbiddenError,
     HttpError,

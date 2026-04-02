@@ -6,9 +6,11 @@ import asyncio
 
 import httpx
 
+from websearch.core.fetcher.backoff import calculate_backoff
+from websearch.core.fetcher.detection import is_spa
 from websearch.core.fetcher.errors import (
-    ConnectTimeoutError,
     ConnectionError,
+    ConnectTimeoutError,
     DNSError,
     ForbiddenError,
     HttpError,
@@ -21,8 +23,6 @@ from websearch.core.fetcher.errors import (
     ServerError,
     TooManyRedirectsError,
 )
-from websearch.core.fetcher.backoff import calculate_backoff
-from websearch.core.fetcher.detection import is_spa
 from websearch.core.types.result import Err, Ok, Result
 
 # Retryable status codes

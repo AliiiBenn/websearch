@@ -5,9 +5,11 @@ from __future__ import annotations
 from markdownify import markdownify as md_convert
 
 from websearch.core.converter.encoding import decode_html
-from websearch.core.converter.security import DANGEROUS_ATTRS, DANGEROUS_TAGS, is_dangerous_url
+from websearch.core.converter.security import (
+    DANGEROUS_TAGS,
+    is_dangerous_url,
+)
 from websearch.core.types.maybe import Just, Maybe, Nothing
-
 
 # Unicode replacements for smart quotes and special characters
 UNICODE_REPLACEMENTS = {
