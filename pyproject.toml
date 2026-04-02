@@ -22,6 +22,11 @@ websearch = "websearch.main:main"
 [tool.uv]
 package = true
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["websearch*"]
+exclude = ["public*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
