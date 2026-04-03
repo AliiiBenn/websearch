@@ -12,7 +12,7 @@ The SDK does **not** directly configure API endpoints. Instead, it passes enviro
 {
   "env": {
     "ANTHROPIC_BASE_URL": "https://api.minimax.io/anthropic",
-    "ANTHROPIC_AUTH_TOKEN": "sk-cp-KXbQ6RCirhaVnc9i_YiTrRueomORxjgYBPP94A8KJIgP6Fh7W_Nsror08GRWKhN4Lpf5sCub7-Ajlmt0LN5IUzlJuqqj9P7Ohd6P4xOY8l9OpR7egoXbME0",
+    "ANTHROPIC_AUTH_TOKEN": "sk-ant-api03-YOUR_TOKEN_HERE",
     "API_TIMEOUT_MS": "3000000",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "ANTHROPIC_MODEL": "MiniMax-M2.7",
@@ -30,7 +30,7 @@ The SDK does **not** directly configure API endpoints. Instead, it passes enviro
 options = ClaudeAgentOptions(
     env={
         "ANTHROPIC_BASE_URL": "https://api.minimax.io/anthropic",
-        "ANTHROPIC_AUTH_TOKEN": "sk-cp-KXbQ6RCirhaVnc9i_YiTrRueomORxjgYBPP94A8KJIgP6Fh7W_Nsror08GRWKhN4Lpf5sCub7-Ajlmt0LN5IUzlJuqqj9P7Ohd6P4xOY8l9OpR7egoXbME0",
+        "ANTHROPIC_AUTH_TOKEN": "sk-ant-api03-YOUR_TOKEN_HERE",
         "API_TIMEOUT_MS": "3000000",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "ANTHROPIC_MODEL": "MiniMax-M2.7",
