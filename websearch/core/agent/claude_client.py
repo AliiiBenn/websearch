@@ -16,6 +16,7 @@ try:
         ClaudeSDKClient,
         ResultMessage,
         TextBlock,
+        ToolUseBlock,
     )
     from claude_agent_sdk import query as sdk_query
 except ImportError:
@@ -23,6 +24,9 @@ except ImportError:
     ClaudeAgentOptions = None
     sdk_query = None
     AssistantMessage = None
+    TextBlock = None
+    ToolUseBlock = None
+    ResultMessage = None
     ResultMessage = None
     TextBlock = None
 
@@ -145,12 +149,8 @@ Format your response in clear Markdown."""
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         answer += block.text
-                    elif progress_callback and hasattr(block, 'name'):
+                    elif progress_callback and isinstance(block, ToolUseBlock):
                         progress_callback("tool", f"Using tool: {block.name}")
-            if isinstance(message, AssistantMessage):
-                for block in message.content:
-                    if isinstance(block, TextBlock):
-                        answer += block.text
             elif isinstance(message, ResultMessage):
                 if verbose and message.total_cost_usd:
                     print(f"Cost: ${message.total_cost_usd:.4f}")
