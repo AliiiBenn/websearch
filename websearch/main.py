@@ -85,14 +85,14 @@ def fetch(
 @click.option("-n", "--count", default=10, help="Number of results (1-50, default: 10)")
 @click.option("-t", "--type", "search_type", default="web", help=f"Result type: {', '.join(VALID_SEARCH_TYPES)} (default: web)")
 @click.option("-o", "--output", type=click.Path(path_type=Path), help="Output file path")
-@click.option("--json", "output_json", is_flag=True, help="Output raw JSON response")
+@click.option("--verbose", "-v", is_flag=True, help="Show results in verbose table format")
 @click.option("--no-cache", is_flag=True, help="Disable caching")
 def search(
     query: str,
     count: int,
     search_type: str,
     output: Optional[Path],
-    output_json: bool,
+    verbose: bool,
     no_cache: bool,
 ):
     """Search the web using Brave Search API."""
@@ -121,26 +121,7 @@ def search(
 
             search_results = result.just_value()
 
-            if output_json:
-                output_data = {
-                    "query": query,
-                    "count": len(search_results),
-                    "results": [
-                        {
-                            "title": r.title,
-                            "url": r.url,
-                            "description": r.description,
-                            "age": r.age,
-                        }
-                        for r in search_results
-                    ]
-                }
-                json_str = json.dumps(output_data, indent=2)
-                if output:
-                    output.write_text(json_str)
-                else:
-                    console.print(json_str)
-            else:
+            if verbose:
                 console.print(f"[bold #88c0d0]# {query}[/bold #88c0d0]\n")
                 console.print(f"[dim]Found {len(search_results)} results[/dim]\n")
 
@@ -163,6 +144,25 @@ def search(
                 if output:
                     output.write_text(table.to_string())
                     console.print(f"\n[green]Saved to {output}[/green]")
+            else:
+                output_data = {
+                    "query": query,
+                    "count": len(search_results),
+                    "results": [
+                        {
+                            "title": r.title,
+                            "url": r.url,
+                            "description": r.description,
+                            "age": r.age,
+                        }
+                        for r in search_results
+                    ]
+                }
+                json_str = json.dumps(output_data, indent=2)
+                if output:
+                    output.write_text(json_str)
+                else:
+                    console.print(json_str)
 
         finally:
             await search_client.close()
