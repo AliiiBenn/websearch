@@ -1,6 +1,6 @@
 [project]
 name = "better-websearch-cli"
-version = "0.2.8"
+version = "0.2.9"
 description = "CLI tool to fetch URLs and search the web"
 readme = "README.md"
 requires-python = ">=3.14"
