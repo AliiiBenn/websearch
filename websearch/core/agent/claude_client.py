@@ -49,7 +49,7 @@ class AskResult:
 
 
 async def ask_with_search(
-    query_text: str,
+    query: str = "",
     count: int = 5,
     cache_enabled: bool = True,
     model: str = "MiniMax-M2.7",
@@ -59,7 +59,7 @@ async def ask_with_search(
     """Ask a question using web search and Claude Agent synthesis.
 
     Args:
-        query_text: The question to ask
+        query: The question to ask
         count: Number of search results to fetch
         cache_enabled: Whether to use caching
         model: Claude model to use
@@ -77,7 +77,7 @@ async def ask_with_search(
 
     try:
         # Perform web search
-        results, cache_hit = await search.search(query_text, count=count)
+        results, cache_hit = await search.search(query, count=count)
 
         if results.is_nothing():
             return AskResult(answer="Search failed", sources=[])
@@ -124,7 +124,7 @@ async def ask_with_search(
 
         prompt = f"""You are a helpful assistant that answers questions based on web search results.
 
-Question: {query_text}
+Question: {query}
 
 Web Search Results:
 {context}
