@@ -166,7 +166,7 @@ Format your response in clear Markdown."""
                     elif progress_callback and isinstance(block, ToolUseBlock):
                         progress_callback("tool", f"Using tool: {block.name}")
             elif isinstance(message, ResultMessage):
-                if verbose and message.total_cost_usd:
+                if verbose and message.total_cost_usd and isinstance(message.total_cost_usd, (int, float)):
                     print(f"Cost: ${message.total_cost_usd:.4f}")
 
         if not answer:
@@ -240,7 +240,7 @@ async def process_content(
                 if isinstance(block, TextBlock):
                     answer += block.text
         elif isinstance(message, ResultMessage):
-            if verbose and message.total_cost_usd:
+            if verbose and message.total_cost_usd and isinstance(message.total_cost_usd, (int, float)):
                 print(f"Cost: ${message.total_cost_usd:.4f}")
 
     if not answer:
