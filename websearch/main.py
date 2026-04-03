@@ -226,7 +226,7 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
 
             if verbose:
                 cache_status = "[green]cache hit[/green]" if result.cached else "[yellow]cache miss[/yellow]"
-                console.print(f"[dim]Status: {cache_status}[/dim]\n")
+                console.print(f"[dim]Cache: {cache_status}[/dim]\n")
 
                 # Show sources table
                 sources_table = Table(
@@ -255,6 +255,10 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
                 console.print()
 
             # Output result
+            # Print cache status to stderr (not stdout) so it doesn't break piping
+            cache_status = "[green]cache hit[/green]" if result.cached else "[yellow]cache miss[/yellow]"
+            console.print(f"[dim][Cache: {cache_status}][/dim]", file=sys.stderr)
+
             if output:
                 output.write_text(result.answer)
                 if verbose:
