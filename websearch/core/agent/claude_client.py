@@ -11,11 +11,11 @@ from websearch.core.search import Search
 from websearch.core.types.maybe import Just, Maybe, Nothing
 
 try:
-    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
     from claude_agent_sdk.types import MCPServer, MCPTool
 except ImportError:
-    ClaudeSDKClient = None
     ClaudeAgentOptions = None
+    ClaudeSDKClient = None
     MCPServer = None
     MCPTool = None
 
