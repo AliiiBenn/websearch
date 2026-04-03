@@ -11,6 +11,7 @@ from typing import Optional
 
 import click
 from rich.console import Console
+from rich.progress import Spinner
 from rich.table import Table
 
 from websearch.core.agent.claude_client import ask_with_search, process_content
@@ -199,14 +200,16 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
                 console.print(f"[dim]Searching for: {query}[/dim]")
                 console.print(f"[dim]Using model: {model} (max {max_turns} turns)[/dim]\n")
 
-            result = await ask_with_search(
-                query=query,
-                count=count,
-                cache_enabled=not no_cache,
-                model=model,
-                max_turns=max_turns,
-                verbose=verbose,
-            )
+            with Spinner(delay=0.1, auto_refresh=True) as spinner:
+                spinner.update("[dim]Searching and processing...[/dim]")
+                result = await ask_with_search(
+                    query=query,
+                    count=count,
+                    cache_enabled=not no_cache,
+                    model=model,
+                    max_turns=max_turns,
+                    verbose=verbose,
+                )
 
             if verbose:
                 cache_status = "[green]cache hit[/green]" if result.cached else "[yellow]cache miss[/yellow]"
