@@ -239,14 +239,12 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
                 console.print()
 
             # Output result
-            output_data = result.to_dict()
-
             if output:
-                output.write_text(json.dumps(output_data, indent=2))
+                output.write_text(result.answer)
                 if verbose:
                     console.print(f"[green]Saved to {output}[/green]")
             else:
-                console.print(json.dumps(output_data, indent=2))
+                console.print(result.answer)
 
         except Exception as e:
             console.print(f"[red]Error: {str(e)}[/red]")
