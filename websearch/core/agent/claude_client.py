@@ -1,343 +1,258 @@
-"""Claude Agent integration for web search synthesis."""
+"""Claude SDK integration for websearch agent."""
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
+import os
 from typing import Any
 
+from websearch.core.agent.response_cache import ClaudeResponseCache
 from websearch.core.search import Search
-from websearch.core.search.types import SearchResult, SearchResults
-from websearch.core.types.maybe import Just, Nothing
+from websearch.core.types.maybe import Just, Maybe, Nothing
+
+try:
+    from claude_agent_sdk import ClaudeAgentSDK
+    from claude_agent_sdk.types import MCPServer, MCPTool
+except ImportError:
+    ClaudeAgentSDK = None
+    MCPServer = None
+    MCPTool = None
 
 
-@dataclass
-class AskResult:
-    """Result of ask_with_search operation."""
+def create_websearch_mcp_server(
+    api_key: str | None = None,
+    cache_ttl: float = 7200,
+) -> MCPServer | None:
+    """Create an MCP server with websearch tools.
 
-    query: str
-    answer: str
-    sources: list[dict[str, Any]]
-    cached: bool
+    Args:
+        api_key: Optional API key for Brave Search
+        cache_ttl: TTL for Claude response cache in seconds
 
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON output."""
+    Returns:
+        MCP server instance or None if SDK not available
+    """
+    if ClaudeAgentSDK is None:
+        return None
+
+    search_instance = Search(api_key=api_key)
+    cache = ClaudeResponseCache(ttl=cache_ttl)
+
+    async def websearch_fetch(
+        url: str,
+        prompt: str,
+        refresh: bool = False,
+    ) -> dict[str, Any]:
+        """Fetch a URL and process with Claude.
+
+        Args:
+            url: URL to fetch
+            prompt: Prompt for Claude to process the content
+            refresh: Skip cache and force fresh fetch
+
+        Returns:
+            Dict with response and metadata
+        """
+        # Check cache first unless refresh is requested
+        if not refresh:
+            cached = cache.get(url, prompt)
+            if cached is not None:
+                return cached
+
+        # Fetch URL content
+        content = await search_instance.fetch(url, refresh=refresh)
+        if content.is_nothing():
+            return {
+                "error": "Failed to fetch URL",
+                "url": url,
+            }
+
+        markdown_content = content.just_value()
+
+        # Cache the response
+        cache.set(url, prompt, markdown_content)
+
         return {
-            "query": self.query,
-            "answer": self.answer,
-            "sources": self.sources,
-            "cached": self.cached,
+            "response": markdown_content,
+            "url": url,
+            "cached": False,
         }
 
+    async def websearch_search(
+        query: str,
+        count: int = 10,
+        prompt: str | None = None,
+    ) -> dict[str, Any]:
+        """Search the web and optionally process with Claude.
 
-async def ask_with_search(
-    query: str,
-    count: int = 5,
-    cache_enabled: bool = True,
-    model: str = "MiniMax-M2.7",
-    max_turns: int = 10,
-    verbose: bool = False,
-) -> AskResult:
-    """Process a query using web search and Claude Agent synthesis.
+        Args:
+            query: Search query
+            count: Number of results
+            prompt: Optional prompt for Claude to process results
 
-    Args:
-        query: The search query
-        count: Number of search results to fetch (1-20)
-        cache_enabled: Whether to use caching
-        model: Model to use for synthesis
-        max_turns: Maximum conversation turns
-        verbose: Whether to show verbose output
+        Returns:
+            Dict with search results and optional processed response
+        """
+        results, cache_hit = await search_instance.search(query, count=count)
 
-    Returns:
-        AskResult with query, answer, sources, and cached status
-    """
-    search_client = Search(cache_enabled=cache_enabled)
+        if results.is_nothing():
+            return {
+                "error": "Search failed",
+                "query": query,
+            }
 
-    try:
-        # Perform the search
-        result, cache_hit = await search_client.search(
-            query, count=count, use_cache=cache_enabled
-        )
+        search_results = results.just_value()
 
-        if isinstance(result, Nothing):
-            return AskResult(
-                query=query,
-                answer="Search failed. Could not retrieve results.",
-                sources=[],
-                cached=False,
-            )
+        if prompt:
+            # Process all results with Claude
+            processed = []
+            for result in search_results.results:
+                cached = cache.get(result.url, prompt)
+                if cached is not None:
+                    processed.append(
+                        {
+                            **result.__dict__,
+                            "processed": cached["response"],
+                            "cached": True,
+                        }
+                    )
+                else:
+                    content = await search_instance.fetch(result.url)
+                    if content.is_just():
+                        cache.set(result.url, prompt, content.just_value())
+                        processed.append(
+                            {
+                                **result.__dict__,
+                                "processed": content.just_value(),
+                                "cached": False,
+                            }
+                        )
+                    else:
+                        processed.append(
+                            {
+                                **result.__dict__,
+                                "processed": None,
+                                "cached": False,
+                            }
+                        )
+            return {
+                "query": query,
+                "results": processed,
+                "count": len(processed),
+                "cache_hit": cache_hit,
+            }
 
-        search_results = result.just_value()
+        return {
+            "query": query,
+            "results": [
+                {"title": r.title, "url": r.url, "description": r.description, "age": r.age}
+                for r in search_results.results
+            ],
+            "count": len(search_results.results),
+            "cache_hit": cache_hit,
+        }
 
-        # Build sources list with cache status
-        sources = []
-        for r in search_results.results:
-            sources.append({
-                "title": r.title,
-                "url": r.url,
-                "description": r.description,
-                "age": r.age,
-            })
+    tools: list[MCPTool] = [
+        {
+            "name": "websearch_fetch",
+            "description": "Fetch a URL and optionally process with Claude",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "URL to fetch"},
+                    "prompt": {
+                        "type": "string",
+                        "description": "Prompt for Claude to process the content",
+                    },
+                    "refresh": {
+                        "type": "boolean",
+                        "description": "Skip cache and force fresh fetch",
+                        "default": False,
+                    },
+                },
+                "required": ["url", "prompt"],
+            },
+        },
+        {
+            "name": "websearch_search",
+            "description": "Search the web using Brave Search API",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of results (1-50)",
+                        "default": 10,
+                    },
+                    "prompt": {
+                        "type": "string",
+                        "description": "Optional prompt for Claude to process results",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    ]
 
-        # Synthesize answer using Claude Agent with search context
-        # Build context from search results
-        context_parts = []
-        for i, r in enumerate(search_results.results, 1):
-            context_parts.append(f"[{i}] {r.title}\nURL: {r.url}\n{r.description}")
+    # Create async tool handlers
+    async def handle_tool_call(name: str, arguments: dict[str, Any]) -> Any:
+        if name == "websearch_fetch":
+            return await websearch_fetch(**arguments)
+        elif name == "websearch_search":
+            return await websearch_search(**arguments)
+        else:
+            raise ValueError(f"Unknown tool: {name}")
 
-        context = "\n\n".join(context_parts)
+    base_url = os.getenv("ANTHROPIC_BASE_URL")
+    auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
 
-        # Use Claude Agent to synthesize answer
-        # Note: This is a simplified implementation that constructs a prompt
-        # In production, this would use the actual Claude API
-        answer = await _synthesize_with_claude(
-            query=query,
-            context=context,
-            sources=sources,
-            model=model,
-            max_turns=max_turns,
-        )
-
-        return AskResult(
-            query=query,
-            answer=answer,
-            sources=sources,
-            cached=cache_hit,
-        )
-    finally:
-        await search_client.close()
-
-
-async def _synthesize_with_claude(
-    query: str,
-    context: str,
-    sources: list[dict[str, Any]],
-    model: str,
-    max_turns: int,
-) -> str:
-    """Synthesize answer using Claude Agent.
-
-    This is a placeholder implementation. In production, this would
-    integrate with the actual Claude API to process the query with
-    the search context.
-
-    Args:
-        query: The user's query
-        context: Formatted search results context
-        sources: List of source dicts
-        model: Model to use
-        max_turns: Max conversation turns
-
-    Returns:
-        Synthesized answer string
-    """
-    # Build a structured prompt for the agent
-    prompt = _build_agent_prompt(query, context, sources, max_turns)
-
-    # In a full implementation, this would call the Claude API
-    # For now, we return a structured response based on the sources
-    answer = _generate_answer_from_sources(query, sources)
-
-    return answer
-
-
-def _build_agent_prompt(
-    query: str,
-    context: str,
-    sources: list[dict[str, Any]],
-    max_turns: int,
-) -> str:
-    """Build the agent prompt from query and sources."""
-    sources_text = "\n".join(
-        f"- {s['title']}: {s['url']}" for s in sources
+    sdk = ClaudeAgentSDK(
+        base_url=base_url,
+        auth_token=auth_token,
     )
 
-    return f"""You are a research assistant that answers questions based on web search results.
-
-User Query: {query}
-
-Search Results:
-{context}
-
-Instructions:
-1. Synthesize a comprehensive answer from the search results above
-2. Cite your sources using the URL references
-3. If the search results don't contain enough information, say so
-4. Keep your answer focused and informative
-
-Max conversation turns: {max_turns}
-
-Answer the query based on the provided search results.
-"""
-
-
-def _generate_answer_from_sources(
-    query: str,
-    sources: list[dict[str, Any]],
-) -> str:
-    """Generate a formatted answer from sources.
-
-    This creates a basic synthesized answer from the search results.
-    In production, this would be replaced with actual Claude API calls.
-
-    Args:
-        query: The user's query
-        sources: List of search result dicts
-
-    Returns:
-        Formatted answer string
-    """
-    if not sources:
-        return "No search results available to answer this query."
-
-    # Build answer from sources
-    lines = []
-    lines.append(f"Based on web search results for: {query}\n")
-
-    for i, source in enumerate(sources, 1):
-        lines.append(f"[{i}] {source['title']}")
-        lines.append(f"    URL: {source['url']}")
-        if source.get('description'):
-            lines.append(f"    {source['description']}")
-        lines.append("")
-
-    lines.append("Note: This answer was generated from the search results above.")
-    lines.append("In production, this would use Claude API for intelligent synthesis.")
-
-    return "\n".join(lines)
+    return MCPServer(tools=tools, handle_tool_call=handle_tool_call)
 
 
 async def process_content(
-    markdown_content: str,
+    url: str,
+    content: str,
     prompt: str,
-    model: str = "MiniMax-M2.7",
+    model: str = "claude-opus-4-5",
     verbose: bool = False,
-    url: str | None = None,
-) -> str:
-    """Process content with Claude Agent.
+) -> Maybe[str]:
+    """Process URL content with Claude.
 
     Args:
-        markdown_content: The markdown content to process.
-        prompt: The prompt/instructions for Claude.
-        model: Model to use (default: MiniMax-M2.7).
-        verbose: Whether to include partial messages.
-        url: Optional URL source for reference.
+        url: URL that was fetched (for context)
+        content: Fetched content (markdown)
+        prompt: Prompt for Claude to process the content
+        model: Claude model to use
+        verbose: Whether to print verbose output
 
     Returns:
-        The agent's response as a string.
-
-    Raises:
-        AgentAuthError: If authentication fails.
-        AgentResponseError: If Claude returns an error.
+        Maybe containing processed response string
     """
-    import os
+    if ClaudeAgentSDK is None:
+        return Nothing()
 
-    from claude_agent_sdk import (
-        ClaudeSDKClient,
-        ClaudeAgentOptions,
-        ResultMessage,
-        AssistantMessage,
-        create_sdk_mcp_server,
-        tool,
+    base_url = os.getenv("ANTHROPIC_BASE_URL")
+    auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
+
+    if not auth_token:
+        return Nothing()
+
+    sdk = ClaudeAgentSDK(
+        base_url=base_url,
+        auth_token=auth_token,
     )
-
-    from websearch.core.agent.errors import AgentAuthError, AgentResponseError
-
-    @tool("websearch_fetch", "Fetch URL as Markdown", {"url": str})
-    async def websearch_fetch(args: dict) -> dict:
-        """MCP tool that fetches a URL and returns Markdown."""
-        from websearch.core.search import Search
-        from websearch.core.types.maybe import Nothing
-
-        tool_url = args["url"]
-        search = Search(cache_enabled=True)
-        result = await search.fetch(tool_url)
-        await search.close()
-
-        if isinstance(result, Nothing):
-            return {"content": [{"type": "text", "text": "Failed to fetch URL"}], "is_error": True}
-        return {"content": [{"type": "text", "text": result.just_value()}]}
-
-    @tool("websearch_search", "Search the web", {"query": str, "count": int})
-    async def websearch_search(args: dict) -> dict:
-        """MCP tool for web search."""
-        from websearch.core.search import Search
-        from websearch.core.types.maybe import Nothing
-
-        tool_query = args["query"]
-        tool_count = args.get("count", 5)
-
-        search = Search(api_key=os.environ.get("BRAVE_API_KEY"))
-        results, _ = await search.search(tool_query, count=tool_count)
-        await search.close()
-
-        if isinstance(results, Nothing):
-            return {"content": [{"type": "text", "text": "Search failed"}], "is_error": True}
-
-        formatted = "\n".join([
-            f"[{i}] {r.title}\n{r.url}\n{r.description}\n"
-            for i, r in enumerate(results.just_value().results, 1)
-        ])
-        return {"content": [{"type": "text", "text": formatted}]}
-
-    mcp_server = create_sdk_mcp_server(
-        name="websearch",
-        version="1.0.0",
-        tools=[websearch_fetch, websearch_search],
-    )
-
-    system_prompt = f"""You are a content processing agent.
-Analyze the provided web content and follow the user's instructions.
-
-User's instructions: {prompt}
-
-Format output as clean Markdown."""
-
-    query_content = f"Content:\n{markdown_content}\n\n---"
-
-    if url:
-        query_content = f"URL: {url}\n\n{query_content}"
-
-    query_content += f"\n\nFollow the instructions: {prompt}"
-
-    options = ClaudeAgentOptions(
-        env={
-            "ANTHROPIC_BASE_URL": os.environ.get(
-                "ANTHROPIC_BASE_URL",
-                "https://api.minimax.io/anthropic",
-            ),
-            "ANTHROPIC_AUTH_TOKEN": os.environ.get("ANTHROPIC_AUTH_TOKEN", ""),
-        },
-        model=model,
-        mcp_servers={"websearch": mcp_server},
-        allowed_tools=[
-            "mcp__websearch__websearch_fetch",
-            "mcp__websearch__websearch_search",
-        ],
-        system_prompt=system_prompt,
-        include_partial_messages=verbose,
-    )
-
-    # Check for auth token
-    if not os.environ.get("ANTHROPIC_AUTH_TOKEN"):
-        raise AgentAuthError("ANTHROPIC_AUTH_TOKEN environment variable is not set")
 
     try:
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(query_content)
-
-            async for msg in client.receive_response():
-                if isinstance(msg, ResultMessage):
-                    return msg.result if msg.result else ""
-                elif isinstance(msg, AssistantMessage):
-                    # In verbose mode, we could print partial messages here
-                    pass
-
-        return ""
-    except AgentAuthError:
-        raise
-    except Exception as e:
-        error_msg = str(e).lower()
-        if "auth" in error_msg or "token" in error_msg or "401" in error_msg:
-            raise AgentAuthError(f"Authentication failed: {e}")
-        raise AgentResponseError(f"Agent processing failed: {e}")
+        response = await sdk.complete(
+            prompt=f"Given the following content from {url}, {prompt}\n\n---\n\n{content}",
+            model=model,
+            verbose=verbose,
+        )
+        return Just(response)
+    except Exception:
+        return Nothing()
