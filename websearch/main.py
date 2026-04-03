@@ -204,14 +204,14 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
                 task = progress.add_task("[dim]Starting...[/dim]", total=None)
 
                 def update_progress(step: str, message: str):
-                    step_icons = {
-                        "searching": "🔍",
-                        "fetching": "📖",
-                        "thinking": "🤔",
-                        "tool": "🔧",
+                    step_labels = {
+                        "searching": "Searching",
+                        "fetching": "Reading sources",
+                        "thinking": "Synthesizing",
+                        "tool": "Using tool",
                     }
-                    icon = step_icons.get(step, "⏳")
-                    progress.update(task, description=f"[dim]{icon} {message}[/dim]")
+                    label = step_labels.get(step, "Processing")
+                    progress.update(task, description=f"[dim]{label}: {message}[/dim]")
 
                 result = await ask_with_search(
                     query=query,
