@@ -128,9 +128,9 @@ def search(
                 console.print(f"[dim]Found {len(search_results)} results[/dim]\n")
 
                 table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
-                table.add_column("#", style="dim", width=3)
+                table.add_column("#", style="dim", width=3, no_wrap=True)
                 table.add_column("Title", style="white")
-                table.add_column("URL", style="dim")
+                table.add_column("URL", style="dim", no_wrap=True)
                 table.add_column("Description", style="dim", max_width=60)
 
                 for i, r in enumerate(search_results, 1):
