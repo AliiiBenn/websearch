@@ -1,7 +1,9 @@
 """Agent module for Claude SDK integration."""
 
 from websearch.core.agent.claude_client import (
+    AskResult,
     ClaudeResponseCache,
+    ask_with_search,
     create_websearch_mcp_server,
     process_content,
 )
@@ -19,7 +21,9 @@ __all__ = [
     "AgentResponseError",
     "AgentTimeoutError",
     "AgentAuthError",
+    "AskResult",
     "ClaudeResponseCache",
+    "ask_with_search",
     "create_websearch_mcp_server",
     "process_content",
 ]

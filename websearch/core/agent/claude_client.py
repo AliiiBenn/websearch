@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 from typing import Any
 
 from websearch.core.agent.response_cache import ClaudeResponseCache
@@ -248,3 +249,123 @@ async def process_content(
         return Just(response)
     except Exception:
         return Nothing()
+
+
+@dataclass
+class AskResult:
+    """Result from ask_with_search."""
+
+    answer: str
+    sources: list[dict[str, Any]] = field(default_factory=list)
+    cached: bool = False
+    model: str = "MiniMax-M2.7"
+    num_results: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "answer": self.answer,
+            "sources": self.sources,
+            "cached": self.cached,
+            "model": self.model,
+            "num_results": self.num_results,
+        }
+
+
+async def ask_with_search(
+    query: str,
+    count: int = 5,
+    cache_enabled: bool = True,
+    model: str = "MiniMax-M2.7",
+    max_turns: int = 10,
+    verbose: bool = False,
+) -> AskResult:
+    """Ask a question using web search and Claude Agent synthesis.
+
+    Args:
+        query: The question to ask
+        count: Number of search results to fetch
+        cache_enabled: Whether to use caching
+        model: Claude model to use
+        max_turns: Maximum conversation turns
+        verbose: Whether to show verbose output
+
+    Returns:
+        AskResult with answer and sources
+    """
+    if ClaudeAgentSDK is None:
+        return AskResult(answer="Claude Agent SDK not available", sources=[])
+
+    api_key = os.getenv("BRAVE_API_KEY")
+    search = Search(api_key=api_key, cache_enabled=cache_enabled)
+
+    try:
+        # Perform web search
+        results, cache_hit = await search.search(query, count=count)
+
+        if results.is_nothing():
+            return AskResult(answer="Search failed", sources=[])
+
+        search_results = results.just_value()
+
+        # Fetch content from top results
+        sources = []
+        for r in search_results:
+            content = await search.fetch(r.url)
+            if content.is_just():
+                sources.append({
+                    "title": r.title,
+                    "url": r.url,
+                    "description": r.description,
+                    "content": content.just_value(),
+                })
+
+        # Prepare context from sources
+        context_parts = []
+        for i, s in enumerate(sources[:count], 1):
+            context_parts.append(f"[{i}] {s['title']}\n{s['url']}\n{s.get('description', '')}\n{s.get('content', '')[:500]}...")
+
+        context = "\n\n---\n\n".join(context_parts)
+
+        # Get Claude response
+        base_url = os.getenv("ANTHROPIC_BASE_URL")
+        auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
+
+        if not auth_token:
+            return AskResult(answer="ANTHROPIC_AUTH_TOKEN not set", sources=sources)
+
+        sdk = ClaudeAgentSDK(
+            base_url=base_url,
+            auth_token=auth_token,
+        )
+
+        prompt = f"""You are a helpful assistant that answers questions based on web search results.
+
+Question: {query}
+
+Web Search Results:
+{context}
+
+Based on the search results above, provide a comprehensive answer to the question.
+Format your response in clear Markdown."""
+
+        try:
+            response = await sdk.complete(
+                prompt=prompt,
+                model=model,
+                verbose=verbose,
+            )
+            answer = response if response else "No response from Claude"
+        except Exception as e:
+            answer = f"Error getting response from Claude: {str(e)}"
+
+        return AskResult(
+            answer=answer,
+            sources=[{"title": s["title"], "url": s["url"], "description": s.get("description", "")} for s in sources],
+            cached=cache_hit,
+            model=model,
+            num_results=len(sources),
+        )
+
+    finally:
+        await search.close()
