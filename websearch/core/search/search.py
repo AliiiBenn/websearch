@@ -8,7 +8,7 @@ from typing import Any
 
 from websearch.core.cache import Cache
 from websearch.core.converter import Converter
-from websearch.core.fetcher import Fetcher
+from websearch.core.fetcher import Fetcher, is_spa
 from websearch.core.search.client import BraveApiError, BraveClient
 from websearch.core.search.types import SearchResult, SearchResults
 from websearch.core.types.maybe import Just, Maybe, Nothing
@@ -134,7 +134,31 @@ class Search:
         if use_cache and not refresh:
             cached = self.cache.get_url(url)
             if cached.is_just():
-                content, _ = cached.just_value()
+                content, metadata = cached.just_value()
+                # If content was rendered via Playwright, it's complete
+                if metadata.get("spa_rendering_used"):
+                    md = self.converter.to_markdown(content)
+                    return md
+                # Content wasn't SPA-rendered - re-check if it could be SPA
+                if is_spa(content):
+                    # Content could be an SPA that needs JavaScript rendering
+                    # Try to re-fetch with Playwright
+                    result = await self.fetcher.fetch(url)
+                    if result.is_ok():
+                        rendered = result.ok()
+                        if rendered is not None:
+                            # Cache the rendered content for next time
+                            self.cache.set_url(
+                                url,
+                                rendered,
+                                metadata={"spa_rendering_used": True},
+                            )
+                            md = self.converter.to_markdown(rendered)
+                            return md
+                    # Playwright unavailable or failed - don't serve potentially
+                    # incomplete content
+                    return Nothing()
+                # Content is definitely not SPA - safe to use
                 md = self.converter.to_markdown(content)
                 return md
 
@@ -147,8 +171,22 @@ class Search:
         if content is None:
             return Nothing()
 
-        if use_cache and not refresh:
-            self.cache.set_url(url, content)
+        # Check if content could be an SPA that needs JavaScript rendering
+        if is_spa(content):
+            # Content needs JavaScript rendering but we don't know if it was
+            # actually rendered. To be safe, don't cache potentially incomplete
+            # raw HTML content.
+            if use_cache and not refresh:
+                md = self.converter.to_markdown(content)
+                return md
+        else:
+            # Content is definitely not SPA - safe to cache
+            if use_cache and not refresh:
+                self.cache.set_url(
+                    url,
+                    content,
+                    metadata={"spa_rendering_used": False},
+                )
 
         md = self.converter.to_markdown(content)
         return md

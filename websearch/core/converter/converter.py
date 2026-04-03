@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from markdownify import markdownify as md_convert
+from selectolax.parser import HTMLParser
 
 from websearch.core.converter.encoding import decode_html
 from websearch.core.converter.security import (
@@ -79,6 +80,27 @@ class Converter:
             return ""
         return url
 
+    def _strip_dangerous_attrs(self, html: str) -> str:
+        """Strip dangerous event handler attributes (on*) from HTML.
+
+        Args:
+            html: HTML string to sanitize
+
+        Returns:
+            HTML string with dangerous attributes removed
+        """
+        parser = HTMLParser(html)
+        # Strip on* attrs from all elements
+        for node in parser.css("*"):
+            if hasattr(node, "attrs") and node.attrs:
+                # Collect keys to avoid modifying dict during iteration
+                keys_to_remove = [k for k in node.attrs if k.startswith("on")]
+                for key in keys_to_remove:
+                    del node.attrs[key]
+        # Get body content and strip body tags to avoid wrapper
+        body_html = parser.body.html
+        return body_html.replace("<body>", "").replace("</body>", "")
+
     def to_markdown(self, html: bytes) -> Maybe[str]:
         """Convert HTML bytes to Markdown string.
 
@@ -90,6 +112,9 @@ class Converter:
         """
         try:
             text = decode_html(html)
+
+            # Strip dangerous event handler attributes before conversion
+            text = self._strip_dangerous_attrs(text)
 
             # Configure markdownify with XSS prevention
             config = self._config.copy()
