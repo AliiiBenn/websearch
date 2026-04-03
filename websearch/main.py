@@ -129,15 +129,14 @@ def search(
 
                 table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
                 table.add_column("#", style="dim", width=3, no_wrap=True)
-                table.add_column("Title", style="white")
-                table.add_column("URL", style="dim", no_wrap=True)
+                table.add_column("Result", style="white")
                 table.add_column("Description", style="dim", max_width=60)
 
                 for i, r in enumerate(search_results, 1):
+                    result_cell = f"[link={r.url}]{r.title}[/link]\n[dim]{r.url}[/dim]"
                     table.add_row(
                         str(i),
-                        f"[link={r.url}]{r.title}[/link]",
-                        r.url,
+                        result_cell,
                         r.description[:80] + "..." if len(r.description) > 80 else r.description,
                     )
 
