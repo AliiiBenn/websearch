@@ -106,9 +106,13 @@ class AskResultCache:
             # Check TTL
             cached_at = metadata.get("cached_at")
             if cached_at:
+                from datetime import datetime
+
                 from websearch.core.cache.ttl import is_expired
 
-                if is_expired(cached_at, self.ttl):
+                # Parse ISO string back to datetime
+                cached_at_dt = datetime.fromisoformat(cached_at)
+                if is_expired(cached_at_dt, self.ttl):
                     return None
 
             response = json.loads(response_path.read_text())
@@ -271,9 +275,13 @@ class ClaudeResponseCache:
             # Check TTL
             cached_at = metadata.get("cached_at")
             if cached_at:
+                from datetime import datetime
+
                 from websearch.core.cache.ttl import is_expired
 
-                if is_expired(cached_at, self.ttl):
+                # Parse ISO string back to datetime
+                cached_at_dt = datetime.fromisoformat(cached_at)
+                if is_expired(cached_at_dt, self.ttl):
                     return None
 
             response = json.loads(response_path.read_text())
