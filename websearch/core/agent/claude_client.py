@@ -16,12 +16,12 @@ try:
         ClaudeSDKClient,
         ResultMessage,
         TextBlock,
-        query,
     )
+    from claude_agent_sdk import query as sdk_query
 except ImportError:
     ClaudeSDKClient = None
     ClaudeAgentOptions = None
-    query = None
+    sdk_query = None
     AssistantMessage = None
     ResultMessage = None
     TextBlock = None
@@ -69,7 +69,7 @@ async def ask_with_search(
     Returns:
         AskResult with answer and sources
     """
-    if ClaudeSDKClient is None or query is None:
+    if ClaudeSDKClient is None or sdk_query is None:
         return AskResult(answer="Claude Agent SDK not available", sources=[])
 
     api_key = os.getenv("BRAVE_API_KEY")
@@ -133,7 +133,7 @@ Based on the search results above, provide a comprehensive answer to the questio
 Format your response in clear Markdown."""
 
         answer = ""
-        async for message in query(prompt=prompt, options=options):
+        async for message in sdk_query(prompt=prompt, options=options):
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
@@ -176,7 +176,7 @@ async def process_content(
     Returns:
         Maybe containing processed response string
     """
-    if ClaudeSDKClient is None or query is None:
+    if ClaudeSDKClient is None or sdk_query is None:
         return Nothing()
 
     auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
@@ -202,7 +202,7 @@ async def process_content(
 {content}"""
 
     answer = ""
-    async for message in query(prompt=full_prompt, options=options):
+    async for message in sdk_query(prompt=full_prompt, options=options):
         if isinstance(message, AssistantMessage):
             for block in message.content:
                 if isinstance(block, TextBlock):
