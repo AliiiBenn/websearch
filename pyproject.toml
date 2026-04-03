@@ -10,6 +10,7 @@ dependencies = [
     "selectolax>=0.3",
     "markdownify>=0.12",
     "rich>=13.0",
+    "claude-agent-sdk>=0.1.0",
 ]
 
 [project.optional-dependencies]
