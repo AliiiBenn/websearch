@@ -257,7 +257,7 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
             # Output result
             # Print cache status to stderr (not stdout) so it doesn't break piping
             cache_status = "[green]cache hit[/green]" if result.cached else "[yellow]cache miss[/yellow]"
-            console.print(f"[dim][Cache: {cache_status}][/dim]", file=sys.stderr)
+            console.stderr.print(f"[dim][Cache: {cache_status}][/dim]")
 
             if output:
                 output.write_text(result.answer)
