@@ -282,13 +282,19 @@ def process(url, prompt, refresh, no_cache, output, verbose, model):
             if verbose:
                 console.print(f"[dim]Processing...[/dim]")
 
-            response = await process_content(
-                markdown_content=markdown_content,
+            maybe_response = await process_content(
+                url=url,
+                content=markdown_content,
                 prompt=prompt,
                 model=model,
                 verbose=verbose,
-                url=url,
             )
+
+            if isinstance(maybe_response, Nothing):
+                console.print("[red]Processing failed[/red]")
+                sys.exit(3)
+
+            response = maybe_response.just_value()
 
             output_data = {
                 "url": url,
