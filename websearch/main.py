@@ -30,6 +30,8 @@ def get_api_key() -> Optional[str]:
 
 
 @click.group()
+@click.version_option(version="0.4.0", prog_name="websearch")
+@click.option("-v", is_flag=True, hidden=True, expose_value=False, callback=lambda ctx, param, value: ctx.command.main(["--version"]) if value else None)
 def main():
     """Websearch CLI - Fetch URLs and search the web."""
     pass
