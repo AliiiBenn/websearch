@@ -68,7 +68,8 @@ class Search:
         count: int = 10,
         search_type: str = "web",
         use_cache: bool = True,
-    ) -> Maybe[SearchResults]:
+        verbose: bool = False,
+    ) -> tuple[Maybe[SearchResults], bool]:
         """Search the web using Brave Search API.
 
         Args:
@@ -76,10 +77,13 @@ class Search:
             count: Number of results (1-50)
             search_type: Type of search (web, news, images, videos)
             use_cache: Whether to use cached results
+            verbose: Whether to return cache hit/miss info
 
         Returns:
-            Just(SearchResults) on success, Nothing on failure
+            Tuple of (Maybe[SearchResults], cache_hit_bool)
         """
+        cache_hit = False
+
         if use_cache:
             cached = self.cache.get_search(query, count, search_type)
             if cached.is_just():
@@ -91,13 +95,14 @@ class Search:
                     results=[SearchResult(**r) for r in data["results"]],
                     raw=data,
                 )
-                return Just(results)
+                cache_hit = True
+                return Just(results), cache_hit
 
         try:
             async with BraveClient(api_key=self.api_key, timeout=self.timeout) as client:
                 results = await client.web_search(query, count, search_type)
         except BraveApiError:
-            return Nothing()
+            return Nothing(), cache_hit
 
         if use_cache:
             self.cache.set_search(query, count, search_type, {
@@ -108,7 +113,7 @@ class Search:
                 ],
             })
 
-        return Just(results)
+        return Just(results), cache_hit
 
     async def fetch(
         self,

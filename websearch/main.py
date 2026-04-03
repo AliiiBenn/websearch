@@ -113,7 +113,7 @@ def search(
     async def _search():
         search_client = Search(api_key=api_key, cache_enabled=not no_cache)
         try:
-            result = await search_client.search(query, count=count, search_type=search_type, use_cache=not no_cache)
+            result, cache_hit = await search_client.search(query, count=count, search_type=search_type, use_cache=not no_cache)
 
             if isinstance(result, Nothing):
                 console.print("[red]Error: Search failed[/red]")
@@ -122,6 +122,8 @@ def search(
             search_results = result.just_value()
 
             if verbose:
+                cache_status = "[green]cache hit[/green]" if cache_hit else "[yellow]cache miss[/yellow]"
+                console.print(f"[dim]Status: {cache_status} | Source: {'cached' if cache_hit else 'API'}[/dim]\n")
                 console.print(f"[bold #88c0d0]# {query}[/bold #88c0d0]\n")
                 console.print(f"[dim]Found {len(search_results)} results[/dim]\n")
 
