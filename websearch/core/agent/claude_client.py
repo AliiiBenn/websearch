@@ -6,250 +6,25 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from websearch.core.agent.response_cache import ClaudeResponseCache
 from websearch.core.search import Search
 from websearch.core.types.maybe import Just, Maybe, Nothing
 
 try:
-    from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
-    from claude_agent_sdk.types import MCPServer, MCPTool
-except ImportError:
-    ClaudeAgentOptions = None
-    ClaudeSDKClient = None
-    MCPServer = None
-    MCPTool = None
-
-
-def create_websearch_mcp_server(
-    api_key: str | None = None,
-    cache_ttl: float = 7200,
-) -> MCPServer | None:
-    """Create an MCP server with websearch tools.
-
-    Args:
-        api_key: Optional API key for Brave Search
-        cache_ttl: TTL for Claude response cache in seconds
-
-    Returns:
-        MCP server instance or None if SDK not available
-    """
-    if ClaudeSDKClient is None:
-        return None
-
-    search_instance = Search(api_key=api_key)
-    cache = ClaudeResponseCache(ttl=cache_ttl)
-
-    async def websearch_fetch(
-        url: str,
-        prompt: str,
-        refresh: bool = False,
-    ) -> dict[str, Any]:
-        """Fetch a URL and process with Claude.
-
-        Args:
-            url: URL to fetch
-            prompt: Prompt for Claude to process the content
-            refresh: Skip cache and force fresh fetch
-
-        Returns:
-            Dict with response and metadata
-        """
-        # Check cache first unless refresh is requested
-        if not refresh:
-            cached = cache.get(url, prompt)
-            if cached is not None:
-                return cached
-
-        # Fetch URL content
-        content = await search_instance.fetch(url, refresh=refresh)
-        if content.is_nothing():
-            return {
-                "error": "Failed to fetch URL",
-                "url": url,
-            }
-
-        markdown_content = content.just_value()
-
-        # Cache the response
-        cache.set(url, prompt, markdown_content)
-
-        return {
-            "response": markdown_content,
-            "url": url,
-            "cached": False,
-        }
-
-    async def websearch_search(
-        query: str,
-        count: int = 10,
-        prompt: str | None = None,
-    ) -> dict[str, Any]:
-        """Search the web and optionally process with Claude.
-
-        Args:
-            query: Search query
-            count: Number of results
-            prompt: Optional prompt for Claude to process results
-
-        Returns:
-            Dict with search results and optional processed response
-        """
-        results, cache_hit = await search_instance.search(query, count=count)
-
-        if results.is_nothing():
-            return {
-                "error": "Search failed",
-                "query": query,
-            }
-
-        search_results = results.just_value()
-
-        if prompt:
-            # Process all results with Claude
-            processed = []
-            for result in search_results.results:
-                cached = cache.get(result.url, prompt)
-                if cached is not None:
-                    processed.append(
-                        {
-                            **result.__dict__,
-                            "processed": cached["response"],
-                            "cached": True,
-                        }
-                    )
-                else:
-                    content = await search_instance.fetch(result.url)
-                    if content.is_just():
-                        cache.set(result.url, prompt, content.just_value())
-                        processed.append(
-                            {
-                                **result.__dict__,
-                                "processed": content.just_value(),
-                                "cached": False,
-                            }
-                        )
-                    else:
-                        processed.append(
-                            {
-                                **result.__dict__,
-                                "processed": None,
-                                "cached": False,
-                            }
-                        )
-            return {
-                "query": query,
-                "results": processed,
-                "count": len(processed),
-                "cache_hit": cache_hit,
-            }
-
-        return {
-            "query": query,
-            "results": [
-                {"title": r.title, "url": r.url, "description": r.description, "age": r.age}
-                for r in search_results.results
-            ],
-            "count": len(search_results.results),
-            "cache_hit": cache_hit,
-        }
-
-    tools: list[MCPTool] = [
-        {
-            "name": "websearch_fetch",
-            "description": "Fetch a URL and optionally process with Claude",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "url": {"type": "string", "description": "URL to fetch"},
-                    "prompt": {
-                        "type": "string",
-                        "description": "Prompt for Claude to process the content",
-                    },
-                    "refresh": {
-                        "type": "boolean",
-                        "description": "Skip cache and force fresh fetch",
-                        "default": False,
-                    },
-                },
-                "required": ["url", "prompt"],
-            },
-        },
-        {
-            "name": "websearch_search",
-            "description": "Search the web using Brave Search API",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query"},
-                    "count": {
-                        "type": "integer",
-                        "description": "Number of results (1-50)",
-                        "default": 10,
-                    },
-                    "prompt": {
-                        "type": "string",
-                        "description": "Optional prompt for Claude to process results",
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    ]
-
-    # Create async tool handlers
-    async def handle_tool_call(name: str, arguments: dict[str, Any]) -> Any:
-        if name == "websearch_fetch":
-            return await websearch_fetch(**arguments)
-        elif name == "websearch_search":
-            return await websearch_search(**arguments)
-        else:
-            raise ValueError(f"Unknown tool: {name}")
-
-    return MCPServer(tools=tools, handle_tool_call=handle_tool_call)
-
-
-async def process_content(
-    url: str,
-    content: str,
-    prompt: str,
-    model: str = "claude-opus-4-5",
-    verbose: bool = False,
-) -> Maybe[str]:
-    """Process URL content with Claude.
-
-    Args:
-        url: URL that was fetched (for context)
-        content: Fetched content (markdown)
-        prompt: Prompt for Claude to process the content
-        model: Claude model to use
-        verbose: Whether to print verbose output
-
-    Returns:
-        Maybe containing processed response string
-    """
-    if ClaudeSDKClient is None:
-        return Nothing()
-
-    base_url = os.getenv("ANTHROPIC_BASE_URL")
-    auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
-
-    if not auth_token:
-        return Nothing()
-
-    sdk = ClaudeSDKClient(
-        base_url=base_url,
-        auth_token=auth_token,
+    from claude_agent_sdk import (
+        AssistantMessage,
+        ClaudeAgentOptions,
+        ClaudeSDKClient,
+        ResultMessage,
+        TextBlock,
+        query,
     )
-
-    try:
-        response = await sdk.complete(
-            prompt=f"Given the following content from {url}, {prompt}\n\n---\n\n{content}",
-            model=model,
-            verbose=verbose,
-        )
-        return Just(response)
-    except Exception:
-        return Nothing()
+except ImportError:
+    ClaudeSDKClient = None
+    ClaudeAgentOptions = None
+    query = None
+    AssistantMessage = None
+    ResultMessage = None
+    TextBlock = None
 
 
 @dataclass
@@ -274,7 +49,7 @@ class AskResult:
 
 
 async def ask_with_search(
-    query: str,
+    query_text: str,
     count: int = 5,
     cache_enabled: bool = True,
     model: str = "MiniMax-M2.7",
@@ -284,7 +59,7 @@ async def ask_with_search(
     """Ask a question using web search and Claude Agent synthesis.
 
     Args:
-        query: The question to ask
+        query_text: The question to ask
         count: Number of search results to fetch
         cache_enabled: Whether to use caching
         model: Claude model to use
@@ -294,7 +69,7 @@ async def ask_with_search(
     Returns:
         AskResult with answer and sources
     """
-    if ClaudeSDKClient is None:
+    if ClaudeSDKClient is None or query is None:
         return AskResult(answer="Claude Agent SDK not available", sources=[])
 
     api_key = os.getenv("BRAVE_API_KEY")
@@ -302,7 +77,7 @@ async def ask_with_search(
 
     try:
         # Perform web search
-        results, cache_hit = await search.search(query, count=count)
+        results, cache_hit = await search.search(query_text, count=count)
 
         if results.is_nothing():
             return AskResult(answer="Search failed", sources=[])
@@ -324,25 +99,32 @@ async def ask_with_search(
         # Prepare context from sources
         context_parts = []
         for i, s in enumerate(sources[:count], 1):
-            context_parts.append(f"[{i}] {s['title']}\n{s['url']}\n{s.get('description', '')}\n{s.get('content', '')[:500]}...")
+            content_preview = s.get("content", "")[:500]
+            context_parts.append(f"[{i}] {s['title']}\n{s['url']}\n{s.get('description', '')}\n{content_preview}...")
 
         context = "\n\n---\n\n".join(context_parts)
 
         # Get Claude response
-        base_url = os.getenv("ANTHROPIC_BASE_URL")
         auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
+        base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.minimax.io/anthropic")
 
         if not auth_token:
             return AskResult(answer="ANTHROPIC_AUTH_TOKEN not set", sources=sources)
 
-        sdk = ClaudeSDKClient(
-            base_url=base_url,
-            auth_token=auth_token,
+        env = {
+            "ANTHROPIC_AUTH_TOKEN": auth_token,
+            "ANTHROPIC_BASE_URL": base_url,
+        }
+
+        options = ClaudeAgentOptions(
+            model=model,
+            max_turns=max_turns,
+            env=env,
         )
 
         prompt = f"""You are a helpful assistant that answers questions based on web search results.
 
-Question: {query}
+Question: {query_text}
 
 Web Search Results:
 {context}
@@ -350,15 +132,18 @@ Web Search Results:
 Based on the search results above, provide a comprehensive answer to the question.
 Format your response in clear Markdown."""
 
-        try:
-            response = await sdk.complete(
-                prompt=prompt,
-                model=model,
-                verbose=verbose,
-            )
-            answer = response if response else "No response from Claude"
-        except Exception as e:
-            answer = f"Error getting response from Claude: {str(e)}"
+        answer = ""
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        answer += block.text
+            elif isinstance(message, ResultMessage):
+                if verbose and message.total_cost_usd:
+                    print(f"Cost: ${message.total_cost_usd:.4f}")
+
+        if not answer:
+            answer = "No response from Claude"
 
         return AskResult(
             answer=answer,
@@ -370,3 +155,63 @@ Format your response in clear Markdown."""
 
     finally:
         await search.close()
+
+
+async def process_content(
+    url: str,
+    content: str,
+    prompt: str,
+    model: str = "MiniMax-M2.7",
+    verbose: bool = False,
+) -> Maybe[str]:
+    """Process URL content with Claude.
+
+    Args:
+        url: URL that was fetched (for context)
+        content: Fetched content (markdown)
+        prompt: Prompt for Claude to process the content
+        model: Claude model to use
+        verbose: Whether to print verbose output
+
+    Returns:
+        Maybe containing processed response string
+    """
+    if ClaudeSDKClient is None or query is None:
+        return Nothing()
+
+    auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
+    base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.minimax.io/anthropic")
+
+    if not auth_token:
+        return Nothing()
+
+    env = {
+        "ANTHROPIC_AUTH_TOKEN": auth_token,
+        "ANTHROPIC_BASE_URL": base_url,
+    }
+
+    options = ClaudeAgentOptions(
+        model=model,
+        env=env,
+    )
+
+    full_prompt = f"""Given the following content from {url}, {prompt}
+
+---
+
+{content}"""
+
+    answer = ""
+    async for message in query(prompt=full_prompt, options=options):
+        if isinstance(message, AssistantMessage):
+            for block in message.content:
+                if isinstance(block, TextBlock):
+                    answer += block.text
+        elif isinstance(message, ResultMessage):
+            if verbose and message.total_cost_usd:
+                print(f"Cost: ${message.total_cost_usd:.4f}")
+
+    if not answer:
+        return Nothing()
+
+    return Just(answer)

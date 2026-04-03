@@ -4,7 +4,6 @@ from websearch.core.agent.claude_client import (
     AskResult,
     ClaudeResponseCache,
     ask_with_search,
-    create_websearch_mcp_server,
     process_content,
 )
 from websearch.core.agent.errors import (
@@ -24,6 +23,5 @@ __all__ = [
     "AskResult",
     "ClaudeResponseCache",
     "ask_with_search",
-    "create_websearch_mcp_server",
     "process_content",
 ]
