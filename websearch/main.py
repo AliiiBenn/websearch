@@ -127,9 +127,9 @@ def search(
                 console.print(f"[bold #88c0d0]# {query}[/bold #88c0d0]\n")
                 console.print(f"[dim]Found {len(search_results)} results[/dim]\n")
 
-                table = Table(show_header=True, header_style="bold", box=None, pad_edge=False)
+                table = Table(show_header=True, header_style="bold", box=None, pad_edge=False, min_width=120)
                 table.add_column("#", style="dim", width=3, no_wrap=True)
-                table.add_column("Result", style="white")
+                table.add_column("Result", style="white", no_wrap=True)
                 table.add_column("Description", style="dim", max_width=60)
 
                 for i, r in enumerate(search_results, 1):
