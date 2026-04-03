@@ -113,7 +113,7 @@ def search(
     async def _search():
         search_client = Search(api_key=api_key, cache_enabled=not no_cache)
         try:
-            result = await search_client.search(query, count=count, search_type=search_type)
+            result = await search_client.search(query, count=count, search_type=search_type, use_cache=not no_cache)
 
             if isinstance(result, Nothing):
                 console.print("[red]Error: Search failed[/red]")
