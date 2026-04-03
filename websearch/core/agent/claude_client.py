@@ -40,6 +40,14 @@ class AskResult:
     cached: bool = False
     model: str = "MiniMax-M2.7"
     num_results: int = 0
+    # Metadata fields
+    duration_ms: int | None = None
+    duration_api_ms: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_cost_usd: float | None = None
+    num_turns: int | None = None
+    stop_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -49,6 +57,13 @@ class AskResult:
             "cached": self.cached,
             "model": self.model,
             "num_results": self.num_results,
+            "duration_ms": self.duration_ms,
+            "duration_api_ms": self.duration_api_ms,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_cost_usd": self.total_cost_usd,
+            "num_turns": self.num_turns,
+            "stop_reason": self.stop_reason,
         }
 
 
@@ -156,6 +171,15 @@ Based on the search results above, provide a comprehensive answer to the questio
 Format your response in clear Markdown."""
 
         answer = ""
+        # Metadata fields from ResultMessage
+        duration_ms: int | None = None
+        duration_api_ms: int | None = None
+        input_tokens: int | None = None
+        output_tokens: int | None = None
+        total_cost_usd: float | None = None
+        num_turns: int | None = None
+        stop_reason: str | None = None
+
         if progress_callback:
             progress_callback("thinking", "Synthesizing answer...")
         async for message in sdk_query(prompt=prompt, options=options):
@@ -166,6 +190,15 @@ Format your response in clear Markdown."""
                     elif progress_callback and isinstance(block, ToolUseBlock):
                         progress_callback("tool", f"Using tool: {block.name}")
             elif isinstance(message, ResultMessage):
+                # Capture metadata from ResultMessage
+                duration_ms = message.duration_ms
+                duration_api_ms = message.duration_api_ms
+                if message.usage:
+                    input_tokens = message.usage.get('input_tokens')
+                    output_tokens = message.usage.get('output_tokens')
+                total_cost_usd = message.total_cost_usd
+                num_turns = message.num_turns
+                stop_reason = message.stop_reason
                 if verbose and message.total_cost_usd and isinstance(message.total_cost_usd, (int, float)):
                     print(f"Cost: ${message.total_cost_usd:.4f}")
 
@@ -183,6 +216,13 @@ Format your response in clear Markdown."""
             cached=False,
             model=model,
             num_results=len(sources),
+            duration_ms=duration_ms,
+            duration_api_ms=duration_api_ms,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_cost_usd=total_cost_usd,
+            num_turns=num_turns,
+            stop_reason=stop_reason,
         )
 
     finally:

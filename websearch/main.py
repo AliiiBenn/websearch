@@ -254,6 +254,38 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
                 console.print(sources_table)
                 console.print()
 
+                # Display metadata table
+                metadata_table = Table(
+                    title="Response Metadata",
+                    box=None,
+                    pad_edge=False,
+                    min_width=60,
+                    show_header=False,
+                )
+                metadata_table.add_column("Metric", style="cyan")
+                metadata_table.add_column("Value", style="white")
+
+                if result.duration_ms is not None:
+                    api_str = f" ({result.duration_api_ms:,} ms API)" if result.duration_api_ms is not None else ""
+                    metadata_table.add_row("Duration", f"{result.duration_ms:,} ms{api_str}")
+
+                if result.input_tokens is not None or result.output_tokens is not None:
+                    in_toks = f"{result.input_tokens:,}" if result.input_tokens is not None else "N/A"
+                    out_toks = f"{result.output_tokens:,}" if result.output_tokens is not None else "N/A"
+                    metadata_table.add_row("Tokens", f"{in_toks} in / {out_toks} out")
+
+                if result.total_cost_usd is not None:
+                    metadata_table.add_row("Cost", f"${result.total_cost_usd:.4f}")
+
+                if result.num_turns is not None:
+                    metadata_table.add_row("Turns", str(result.num_turns))
+
+                if result.stop_reason is not None:
+                    metadata_table.add_row("Stop", result.stop_reason)
+
+                console.print(metadata_table)
+                console.print()
+
             # Output result
             # Print cache status to stderr (not stdout) so it doesn't break piping
             cache_status = "[green]cache hit[/green]" if result.cached else "[yellow]cache miss[/yellow]"
