@@ -11,10 +11,11 @@ from websearch.core.search import Search
 from websearch.core.types.maybe import Just, Maybe, Nothing
 
 try:
-    from claude_agent_sdk import ClaudeAgentSDK
+    from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
     from claude_agent_sdk.types import MCPServer, MCPTool
 except ImportError:
-    ClaudeAgentSDK = None
+    ClaudeSDKClient = None
+    ClaudeAgentOptions = None
     MCPServer = None
     MCPTool = None
 
@@ -32,7 +33,7 @@ def create_websearch_mcp_server(
     Returns:
         MCP server instance or None if SDK not available
     """
-    if ClaudeAgentSDK is None:
+    if ClaudeSDKClient is None:
         return None
 
     search_instance = Search(api_key=api_key)
@@ -226,7 +227,7 @@ async def process_content(
     Returns:
         Maybe containing processed response string
     """
-    if ClaudeAgentSDK is None:
+    if ClaudeSDKClient is None:
         return Nothing()
 
     base_url = os.getenv("ANTHROPIC_BASE_URL")
@@ -235,7 +236,7 @@ async def process_content(
     if not auth_token:
         return Nothing()
 
-    sdk = ClaudeAgentSDK(
+    sdk = ClaudeSDKClient(
         base_url=base_url,
         auth_token=auth_token,
     )
@@ -293,7 +294,7 @@ async def ask_with_search(
     Returns:
         AskResult with answer and sources
     """
-    if ClaudeAgentSDK is None:
+    if ClaudeSDKClient is None:
         return AskResult(answer="Claude Agent SDK not available", sources=[])
 
     api_key = os.getenv("BRAVE_API_KEY")
@@ -334,7 +335,7 @@ async def ask_with_search(
         if not auth_token:
             return AskResult(answer="ANTHROPIC_AUTH_TOKEN not set", sources=sources)
 
-        sdk = ClaudeAgentSDK(
+        sdk = ClaudeSDKClient(
             base_url=base_url,
             auth_token=auth_token,
         )
