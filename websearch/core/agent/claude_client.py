@@ -158,6 +158,8 @@ async def ask_with_search(
             model=model,
             max_turns=max_turns,
             env=env,
+            tools=["WebSearch", "WebFetch"],  # Enable web tools for agent autonomy
+            allowed_tools=["WebSearch", "WebFetch"],  # Auto-approve web tools
         )
 
         prompt = f"""You are a helpful assistant that answers questions based on web search results.
