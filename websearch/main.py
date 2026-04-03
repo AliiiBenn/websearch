@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from websearch.core.agent.claude_client import ask_with_search, process_content
-from websearch.core.agent.errors import AgentFetchError, AgentAuthError
+from websearch.core.agent.errors import AgentAuthError, AgentFetchError
 from websearch.core.search import Search
 from websearch.core.types.maybe import Nothing
 
@@ -280,7 +280,7 @@ def process(url, prompt, refresh, no_cache, output, verbose, model):
             markdown_content = result.just_value()
 
             if verbose:
-                console.print(f"[dim]Processing...[/dim]")
+                console.print("[dim]Processing...[/dim]")
 
             maybe_response = await process_content(
                 url=url,

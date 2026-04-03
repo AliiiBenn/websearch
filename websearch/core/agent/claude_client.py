@@ -203,14 +203,6 @@ def create_websearch_mcp_server(
         else:
             raise ValueError(f"Unknown tool: {name}")
 
-    base_url = os.getenv("ANTHROPIC_BASE_URL")
-    auth_token = os.getenv("ANTHROPIC_AUTH_TOKEN")
-
-    sdk = ClaudeAgentSDK(
-        base_url=base_url,
-        auth_token=auth_token,
-    )
-
     return MCPServer(tools=tools, handle_tool_call=handle_tool_call)
 
 
