@@ -1,5 +1,5 @@
 [project]
-name = "websearch"
+name = "better-websearch-cli"
 version = "0.0.1"
 description = "CLI tool to fetch URLs and search the web"
 readme = "README.md"
