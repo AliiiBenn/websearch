@@ -5,6 +5,9 @@ from websearch.core.agent.claude_client import (
     ask_with_search,
     process_content,
 )
+from websearch.core.agent.response_cache import (
+    AskResultCache,
+)
 from websearch.core.agent.errors import (
     AgentAuthError,
     AgentError,
@@ -20,6 +23,7 @@ __all__ = [
     "AgentTimeoutError",
     "AgentAuthError",
     "AskResult",
+    "AskResultCache",
     "ask_with_search",
     "process_content",
 ]

@@ -27,8 +27,8 @@ except ImportError:
     TextBlock = None
     ToolUseBlock = None
     ResultMessage = None
-    ResultMessage = None
-    TextBlock = None
+
+from websearch.core.agent.response_cache import AskResultCache
 
 
 @dataclass
@@ -76,6 +76,20 @@ async def ask_with_search(
     """
     if ClaudeSDKClient is None or sdk_query is None:
         return AskResult(answer="Claude Agent SDK not available", sources=[])
+
+    # Check answer cache first
+    answer_cache = AskResultCache()
+    if cache_enabled:
+        cached = answer_cache.get(query, count, model)
+        if cached is not None:
+            cached_response = cached["response"]
+            return AskResult(
+                answer=cached_response.get("answer", ""),
+                sources=cached_response.get("sources", []),
+                cached=True,
+                model=model,
+                num_results=cached_response.get("num_results", 0),
+            )
 
     api_key = os.getenv("BRAVE_API_KEY")
     search = Search(api_key=api_key, cache_enabled=cache_enabled)
@@ -158,10 +172,15 @@ Format your response in clear Markdown."""
         if not answer:
             answer = "No response from Claude"
 
+        # Cache the answer for future requests
+        source_list = [{"title": s["title"], "url": s["url"], "description": s.get("description", "")} for s in sources]
+        if cache_enabled:
+            answer_cache.set(query, count, model, answer, source_list)
+
         return AskResult(
             answer=answer,
-            sources=[{"title": s["title"], "url": s["url"], "description": s.get("description", "")} for s in sources],
-            cached=cache_hit,
+            sources=source_list,
+            cached=False,
             model=model,
             num_results=len(sources),
         )

@@ -4,12 +4,195 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
 from websearch.core.cache.ttl import utc_now
+
+
+def normalize_query(query: str) -> str:
+    """Normalize query for cache key.
+
+    Args:
+        query: Raw query string
+
+    Returns:
+        Normalized query (lowercase, stripped, collapsed whitespace)
+    """
+    query = query.lower().strip()
+    query = re.sub(r"\s+", " ", query)
+    return query
+
+
+class AskResultCache:
+    """Cache for ask_with_search results.
+
+    Caches the final answer based on normalized query + count + model.
+
+    Attributes:
+        TTL: Default TTL for cached responses in seconds (30 minutes)
+        CACHE_DIR: Location of the cache directory
+    """
+
+    TTL: float = 1800  # 30 minutes
+    CACHE_DIR: Path = Path.home() / ".cache" / "websearch" / "ask"
+
+    def __init__(self, cache_dir: Path | None = None, ttl: float | None = None):
+        """Initialize AskResult cache.
+
+        Args:
+            cache_dir: Optional custom cache directory
+            ttl: Optional custom TTL in seconds
+        """
+        self.cache_dir = cache_dir or self.CACHE_DIR
+        self.ttl = ttl if ttl is not None else self.TTL
+        self._ensure_dirs()
+
+    def _ensure_dirs(self) -> None:
+        """Ensure cache directories exist."""
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_cache_key(self, query: str, count: int, model: str) -> str:
+        """Generate cache key from query, count, and model.
+
+        Args:
+            query: The search query
+            count: Number of search results
+            model: Claude model identifier
+
+        Returns:
+            SHA256 hash of normalized query:count:model
+        """
+        normalized = normalize_query(query)
+        content = f"{normalized}:{count}:{model}"
+        return hashlib.sha256(content.encode()).hexdigest()
+
+    def _get_cache_path(self, key: str) -> tuple[Path, Path]:
+        """Get paths for cached response and metadata.
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Tuple of (response_path, metadata_path)
+        """
+        response_path = self.cache_dir / key
+        metadata_path = self.cache_dir / f"{key}.meta.json"
+        return response_path, metadata_path
+
+    def get(self, query: str, count: int, model: str) -> dict[str, Any] | None:
+        """Get cached AskResult for query.
+
+        Args:
+            query: The search query
+            count: Number of search results
+            model: Claude model identifier
+
+        Returns:
+            Cached AskResult dict or None if not found or expired
+        """
+        key = self._get_cache_key(query, count, model)
+        response_path, metadata_path = self._get_cache_path(key)
+
+        if not response_path.exists() or not metadata_path.exists():
+            return None
+
+        try:
+            metadata = json.loads(metadata_path.read_text())
+
+            # Check TTL
+            cached_at = metadata.get("cached_at")
+            if cached_at:
+                from websearch.core.cache.ttl import is_expired
+
+                if is_expired(cached_at, self.ttl):
+                    return None
+
+            response = json.loads(response_path.read_text())
+            return {"response": response, "metadata": metadata}
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def set(self, query: str, count: int, model: str, answer: str, sources: list[dict]) -> None:
+        """Cache AskResult for query.
+
+        Args:
+            query: The search query
+            count: Number of search results
+            model: Claude model identifier
+            answer: The synthesized answer
+            sources: List of source dicts
+        """
+        key = self._get_cache_key(query, count, model)
+        response_path, metadata_path = self._get_cache_path(key)
+
+        response_data = {
+            "answer": answer,
+            "sources": sources,
+            "model": model,
+            "num_results": len(sources),
+            "cached": True,
+        }
+
+        metadata = {
+            "query": query,
+            "count": count,
+            "model": model,
+            "cached_at": utc_now().isoformat(),
+            "ttl": self.ttl,
+        }
+
+        self._atomic_write(response_path, json.dumps(response_data, indent=2).encode())
+        self._atomic_write(metadata_path, json.dumps(metadata, indent=2).encode())
+
+    def _atomic_write(self, path: Path, content: bytes) -> None:
+        """Write file atomically using temp file + rename.
+
+        Args:
+            path: Target file path
+            content: Content to write
+        """
+        self._ensure_dirs()
+
+        with NamedTemporaryFile(mode="wb", delete=False, dir=path.parent) as f:
+            f.write(content)
+            temp_path = Path(f.name)
+
+        temp_path.replace(path)
+
+    def invalidate(self, query: str, count: int, model: str) -> bool:
+        """Invalidate cached result for query.
+
+        Args:
+            query: The query to invalidate
+            count: Number of search results
+            model: Claude model identifier
+
+        Returns:
+            True if invalidated, False if not found
+        """
+        key = self._get_cache_key(query, count, model)
+        response_path, metadata_path = self._get_cache_path(key)
+        deleted = False
+
+        if response_path.exists():
+            response_path.unlink()
+            deleted = True
+
+        if metadata_path.exists():
+            metadata_path.unlink()
+            deleted = True
+
+        return deleted
+
+    def clear(self) -> None:
+        """Clear all cached results."""
+        if self.cache_dir.exists():
+            shutil.rmtree(self.cache_dir)
+            self._ensure_dirs()
 
 
 class ClaudeResponseCache:
