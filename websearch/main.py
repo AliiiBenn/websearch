@@ -201,7 +201,18 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
                 console.print(f"[dim]Using model: {model} (max {max_turns} turns)[/dim]\n")
 
             with Progress(auto_refresh=True, console=console) as progress:
-                task = progress.add_task("[dim]Searching and processing...[/dim]", total=None)
+                task = progress.add_task("[dim]Starting...[/dim]", total=None)
+
+                def update_progress(step: str, message: str):
+                    step_icons = {
+                        "searching": "🔍",
+                        "fetching": "📖",
+                        "thinking": "🤔",
+                        "tool": "🔧",
+                    }
+                    icon = step_icons.get(step, "⏳")
+                    progress.update(task, description=f"[dim]{icon} {message}[/dim]")
+
                 result = await ask_with_search(
                     query=query,
                     count=count,
@@ -209,6 +220,7 @@ def ask(query, count, no_cache, output, verbose, model, max_turns):
                     model=model,
                     max_turns=max_turns,
                     verbose=verbose,
+                    progress_callback=update_progress,
                 )
                 progress.remove_task(task)
 

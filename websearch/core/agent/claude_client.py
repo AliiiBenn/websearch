@@ -55,6 +55,7 @@ async def ask_with_search(
     model: str = "MiniMax-M2.7",
     max_turns: int = 10,
     verbose: bool = False,
+    progress_callback=None,
 ) -> AskResult:
     """Ask a question using web search and Claude Agent synthesis.
 
@@ -77,6 +78,8 @@ async def ask_with_search(
 
     try:
         # Perform web search
+        if progress_callback:
+            progress_callback("searching", "Searching the web...")
         results, cache_hit = await search.search(query, count=count)
 
         if results.is_nothing():
@@ -85,6 +88,8 @@ async def ask_with_search(
         search_results = results.just_value()
 
         # Fetch content from top results
+        if progress_callback:
+            progress_callback("fetching", f"Reading {len(search_results)} sources...")
         sources = []
         for r in search_results:
             content = await search.fetch(r.url)
@@ -133,7 +138,15 @@ Based on the search results above, provide a comprehensive answer to the questio
 Format your response in clear Markdown."""
 
         answer = ""
+        if progress_callback:
+            progress_callback("thinking", "Synthesizing answer...")
         async for message in sdk_query(prompt=prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        answer += block.text
+                    elif progress_callback and hasattr(block, 'name'):
+                        progress_callback("tool", f"Using tool: {block.name}")
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
